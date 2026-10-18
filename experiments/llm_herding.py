@@ -20,6 +20,7 @@ Environment for --backend openai:
 
 Claude through Anthropic's OpenAI-compatible endpoint:
   LLM_BASE_URL=https://api.anthropic.com/v1  LLM_API_KEY=<your key>  LLM_MODEL=claude-haiku-5-5
+  LLM_WORKSPACE_ID=wrkspc_…   (needed for personal keys that start with sk-ant-usr-)
 
 Examples:
   python experiments/llm_herding.py --backend mock --proposals 40
@@ -92,9 +93,17 @@ def _opener(base: str) -> urllib.request.OpenerDirector:
     return urllib.request.build_opener()
 
 
+def _extra_headers() -> dict:
+    """Optional provider headers. Anthropic personal keys (sk-ant-usr-…) that can
+    reach several workspaces must name one with `anthropic-workspace-id`."""
+    ws = os.environ.get("LLM_WORKSPACE_ID", "").strip()
+    return {"anthropic-workspace-id": ws} if ws else {}
+
+
 def _post(opener, url: str, payload: dict, key: str, timeout: float) -> dict:
     req = urllib.request.Request(
-        url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})}
+        url, data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {}), **_extra_headers()},
     )
     with opener.open(req, timeout=timeout) as r:
         return json.loads(r.read())
@@ -104,11 +113,11 @@ def preflight(base: str, model: str, key: str) -> None:
     """Fail fast with an actionable message instead of hanging silently."""
     opener = _opener(base)
     root = base.rstrip("/")
-    if "anthropic.com" in root and key and not key.startswith("sk-ant-api"):
-        print("  warning: Claude API keys start with 'sk-ant-api'; this key looks like a different kind of token", flush=True)
+    if "anthropic.com" in root and key.startswith("sk-ant-usr") and not os.environ.get("LLM_WORKSPACE_ID"):
+        print("  warning: personal keys (sk-ant-usr-…) usually need LLM_WORKSPACE_ID (Console → Workspaces → ID)", flush=True)
     print(f"checking {root} ...", flush=True)
     try:
-        req = urllib.request.Request(root + "/models", headers={"Authorization": f"Bearer {key}"} if key else {})
+        req = urllib.request.Request(root + "/models", headers={**({"Authorization": f"Bearer {key}"} if key else {}), **_extra_headers()})
         with opener.open(req, timeout=10) as r:
             models = [m.get("id") for m in json.loads(r.read()).get("data", [])]
     except urllib.error.HTTPError as e:
