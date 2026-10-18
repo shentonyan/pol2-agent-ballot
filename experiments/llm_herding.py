@@ -238,11 +238,18 @@ def main() -> None:
     for c, st in stats.items():
         print(f"{c:<8}{st['correct'] / a.proposals:>12.3f}{st['against_evidence'] / st['ballots']:>23.3f}{int(st['invalid']):>9}{int(st['audit_fail']):>13}")
     diffs = [v["sealed"] - v["open"] for v in paired.values()]
+    summary_row = {"run": run_id, "model": label, "n": a.n, "p": a.p, "temperature": a.temperature, "proposals": a.proposals,
+                   **{f"{c}_{k}": (st[k] / a.proposals if k == "correct" else st[k] / st["ballots"] if k == "against_evidence" else st[k])
+                      for c, st in stats.items() for k in ("correct", "against_evidence", "invalid", "audit_fail")}}
     brng = random.Random(a.seed + 3)
     boots = sorted(sum(brng.choice(diffs) for _ in diffs) / len(diffs) for _ in range(5000))
     d = sum(diffs) / len(diffs)
     print(f"\nsealed − open accuracy: {d:+.3f}  (paired bootstrap 95% CI {boots[124]:+.3f} to {boots[4874]:+.3f}, {len(diffs)} proposals)")
     print("Same evidence in both conditions. A null result is a result; report it as such.")
+    summary_row.update({"diff": d, "diff_ci95": [boots[124], boots[4874]], "minutes": round((time.time() - t_start) / 60, 1)})
+    with (OUT / "summary.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(summary_row) + "\n")
+    print(f"summary appended to {OUT / 'summary.jsonl'}")
 
 
 if __name__ == "__main__":

@@ -111,9 +111,11 @@ class LLMAgent:
         if context.get("visible_votes"):
             parts.append("Votes already cast: " + ", ".join(f"{n}->{c}" for n, c in context["visible_votes"]))
         raw = self.complete("\n\n".join(parts))
-        m = re.search(r"\{.*\}", raw, re.S)
+        # reasoning models may prepend a <think>…</think> block; use the last JSON object
+        visible = re.sub(r"<think>.*?</think>", "", raw, flags=re.S)
+        objs = re.findall(r"\{[^{}]*\}", visible)
         try:
-            d = json.loads(m.group(0) if m else raw)
+            d = json.loads(objs[-1] if objs else visible)
             choice = str(d.get("choice"))
             rationale = str(d.get("rationale", ""))
         except Exception:
