@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0 — 2026-10-18
+
+- Experiment 3 run: Claude Haiku 5.5, 40 proposals × 7 agents × 2 conditions
+  (560 ballots, all audited). Sealed and open both 37/40, equal to the
+  evidence ceiling; 2/280 open ballots against own evidence, only at visible
+  leads of 5–6; 8 invalid open ballots, all under a visible lead of 2–5
+  against the agent, none able to change a decision. Logs, analysis and
+  figure committed.
+- `experiments/analyze_llm_herding.py`: conformity curve by visible lead,
+  evidence ceiling, paired bootstrap, invalid-ballot sensitivity.
+- `agents.parse_choice`: tolerant reply parsing (the strict parser of 0.3
+  is the likely cause of the invalid ballots); raw replies of invalid
+  ballots are now logged.
+- `llm_herding.py`: Anthropic personal keys (`LLM_WORKSPACE_ID`), automatic
+  fallback when a model rejects `temperature`, retries for flaky networks,
+  preflight checks, progress output.
+- Demo site: language-model results section.
+
 ## 0.3.0 — 2026-10-18
 
 - `theory.py`: exact results for every experiment (Condorcet sum, dynamic

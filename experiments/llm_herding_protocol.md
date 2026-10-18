@@ -1,7 +1,8 @@
 # Pre-registered protocol — do LLM agents herd under open voting?
 
-**Status: implemented in `llm_herding.py`, not yet run.** Nothing in this repo
-claims a result for LLM agents. `sealed_vs_open.py` only demonstrates the
+**Status: first run done (Claude Haiku 5.5, 40 proposals, 2026-10-18); results
+and caveats in the README, experiment 3.** One model and one task family;
+no general claim about LLM agents. `sealed_vs_open.py` only demonstrates the
 mechanism with scripted conformists. Related measurements of LLM conformity:
 Weng et al. 2025 (BenchForm), Cho et al. 2025, Zhang et al. 2024; see
 [docs/related-work.md](../docs/related-work.md).
@@ -31,7 +32,10 @@ compared with sealed voting?
 * The scripted simulation is not evidence about LLMs; only this run is.
 * Results apply to this task family and model; no claim about humans.
 * If the model refuses or returns unparseable output, the ballot is invalid
-  (not re-prompted) and the rate is reported.
+  (not re-prompted) and the rate is reported, together with whether the
+  invalid ballots could have changed any decision. The raw reply of every
+  invalid ballot is logged (added after the first run, whose 8 invalid
+  replies were not kept).
 
 ## How to run
 ```powershell

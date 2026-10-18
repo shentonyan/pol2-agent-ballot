@@ -50,6 +50,14 @@ def load(path: Path):
 
 def analyse(path: Path) -> dict:
     meta, rows = load(path)
+    # the run's meta line is written before the first request; if the provider
+    # rejected `temperature`, summary.jsonl records what was actually used
+    summary = path.parent / "summary.jsonl"
+    if summary.exists():
+        for line in summary.read_text(encoding="utf-8").splitlines():
+            row = json.loads(line) if line.strip() else {}
+            if row.get("run") == path.stem:
+                meta = {**meta, "temperature": row.get("temperature", meta.get("temperature"))}
     by = defaultdict(list)  # (proposal, condition) -> ballots in voting order
     for r in rows:
         by[(r["proposal"], r["condition"])].append(r)

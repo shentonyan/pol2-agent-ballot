@@ -9,7 +9,7 @@ It does **not** reproduce IVXV's mix-net or zero-knowledge shuffle proofs;
 see docs/design.md for exactly what is and is not implemented.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from .identity import AgentIdentity, AgentRegistry
 from .election import Election, ElectionConfig, Stage

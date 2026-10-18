@@ -51,13 +51,13 @@ public afterwards**, so every decision carries each agent's reasons.
 | Does adding agents help? | Sealed: 0.78 → 0.98 from 3 to 25 agents. Open: flat at about 0.84 from 9 agents on. |
 | Can consensus be run on the same protocol? | Yes: repeated sealed rounds with disclosure in between reach unanimity in at most two rounds, with the accuracy of a single sealed vote. Each agent that never changes position cuts the chance of agreement (1.00, 0.71, 0.50, 0.35, 0.23 for 0–4 holdouts). |
 | Can a dishonest collector change the result? | Not without detection: altered tallies, dropped envelopes, forged ballots and misreported decryptions are caught by an auditor that only sees the exported record. |
-| Does any of this hold for real language-model agents? | Not yet tested. [`experiments/llm_herding.py`](experiments/llm_herding.py) runs the pre-registered test against any OpenAI-compatible endpoint, including a local Ollama. |
+| Do real language-model agents herd? | First run, Claude Haiku 5.5, 40 proposals × 7 agents × 2 conditions: hardly. It never left its own evidence while the visible lead against it was 4 or less (0 of 44 ballots at leads 2–4, where the scripted conformist always follows), and deferred only at leads of 5 and 6 (2 of 4 ballots, both times rightly). Sealed and open both decided 37/40 correctly, the most the evidence allowed. |
 
 Every simulated number has an exact counterpart in
 [`theory.py`](src/pol2_agent_ballot/theory.py); the tests check them against
 each other and against brute-force enumeration.
 
-> **Status: research prototype (v0.3).** Not reviewed for production use.
+> **Status: research prototype (v0.4).** Not reviewed for production use.
 > No IVXV code is included; IVXV is licensed CC BY-NC-ND and only its
 > published design is used as a reference.
 
@@ -226,21 +226,63 @@ accuracy-when-reached column is a selection effect (agreement happens only
 when the holdouts already agree with the majority), not a benefit of holding
 out.
 
-### 3 · Language-model agents (runnable, not yet run)
+### 3 · Language-model agents
 
-```powershell
-# offline check of the pipeline
-python experiments/llm_herding.py --backend mock --proposals 40
-# a local model through Ollama's OpenAI-compatible endpoint
-$env:LLM_BASE_URL = "http://localhost:11434/v1"; $env:LLM_MODEL = "qwen2.5:7b-instruct"
-python experiments/llm_herding.py --backend openai --proposals 40
-```
+`python experiments/llm_herding.py --backend openai --proposals 40` then
+`python experiments/analyze_llm_herding.py`
 
-Release-review proposals with known ground truth; each agent gets one private
-review result that is wrong with probability 1 − *p*; the same evidence is
-used in the sealed and open conditions, and the script reports the paired
-difference with a bootstrap interval. Design and honesty clauses:
-[experiments/llm_herding_protocol.md](experiments/llm_herding_protocol.md).
+Seven agents, all the same model, review release proposals with a known
+ground truth. Each agent privately re-runs one check and gets a result that
+points the right way with probability *p* = 0.7; the same evidence is used in
+the sealed and open conditions, so the comparison is paired. Every ballot went
+through the full protocol and every election passed its audit.
+
+**First run: Claude Haiku 5.5** (`claude-haiku-5-5`, provider-default
+temperature, seed 2026, 560 ballots; log and analysis in
+[`experiments/results/llm_herding/`](experiments/results/llm_herding/)).
+
+| | Sealed | Open sequential |
+|---|---|---|
+| Collective decision correct | 37 / 40 | 37 / 40 |
+| Ballots against the agent's own evidence | 0 / 280 | 2 / 280 |
+| Invalid ballots | 0 | 8 (none could change a decision) |
+| Paired difference, sealed − open | | 0.000 (the two conditions agreed on all 40) |
+
+![Experiment 3](experiments/figures/llm_herding.png)
+
+What the run shows:
+
+- **The model did not cascade.** At visible leads of 2–4 against its own
+  evidence, exactly where the scripted conformist of experiment 1 always
+  follows, Haiku kept its own evidence in all 40 valid ballots. It deferred
+  only at visible leads of 5 and 6 against it (2 of 4 such ballots), and in
+  both cases the majority was right. Its stated
+  reason was the one an information-cascade model would give:
+
+  > "My evidence covers only the licence check, which passed, so it does not
+  > address whatever concerns led all six other reviewers to hold. With no
+  > visibility into their reasons, I would not override that consensus on a
+  > narrow check." — reviewer-1, proposal R-006, open condition
+
+- **So sealing changed nothing about accuracy here.** Both conditions reached
+  the ceiling set by the evidence itself (the majority of private evidence was
+  correct on 37 of 40 proposals). The protocol's verifiability guarantees
+  still hold; its independence guarantee had nothing to protect against for
+  this model on this task. We report that as the result, not as a failure.
+- **Pressure showed up elsewhere.** All 8 invalid ballots came from agents
+  whose evidence was outvoted by 2–5 visible votes: 8 of the 52 ballots cast
+  under such pressure were unreadable, against 0 of the other 508. The
+  replies were not kept (a logging gap, now fixed), and the original parser
+  was strict about JSON (also fixed, `agents.parse_choice`). Re-asking the
+  same 8 prompts afterwards, for diagnosis only and not counted, produced
+  valid answers: 6 kept their own evidence, 2 deferred at leads of 4 and 5.
+
+Limits: one model, one task family, 40 proposals. The confidence interval on
+each accuracy is wide (0.80–0.97). A model that herds more, a task with more
+ambiguous evidence, or more agents would test the protocol harder; the
+script runs against any OpenAI-compatible endpoint, including a local
+Ollama, to make that easy. A 5-proposal pilot from the same day is kept
+alongside the main run.
 
 ## Related work
 
@@ -300,16 +342,16 @@ src/pol2_agent_ballot/
   event.py       event stages, transition ballots, human queries
   agents.py      scripted, conformist, deliberative and LLM agents
   eap.py         Ethical Alignment Protocol hook
-experiments/     experiment scripts, results/ (JSON), figures/ (PNG)
+experiments/     experiment scripts and analysis, results/ (JSON and ballot logs), figures/ (PNG)
 site/app.html    source of the live demo; built to docs/index.html
 docs/            design, related work, references.bib, related repos, IVXV notes
-tests/           protocol, tampering, consensus, theory (24 tests)
+tests/           protocol, tampering, consensus, theory, reply parsing, analysis (32 tests)
 ```
 
 ## Development
 
 ```bash
-python -m pytest -q                 # 24 tests
+python -m pytest -q                 # 32 tests
 python experiments/make_figures.py  # redraw figures from results/
 python scripts/build_site.py        # rebuild docs/index.html
 ```

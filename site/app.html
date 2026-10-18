@@ -650,7 +650,7 @@ function chartConsensus(rows) {
 function renderLLM(L) {
   $("llmBlock").hidden = false;
   const a = L.accuracy, d = L.diff_sealed_minus_open, ae = L.against_evidence;
-  $("llmIntro").innerHTML = `${esc(L.meta.model)} as all seven agents, ${L.proposals} release-review proposals, the same private evidence in both conditions. Ballots against the agent's own evidence: sealed ${ae.sealed.k}/${ae.sealed.n}, open ${ae.open.k}/${ae.open.n}. Sealed − open accuracy ${d.mean >= 0 ? "+" : ""}${d.mean.toFixed(3)} (paired bootstrap 95% CI ${d.ci95[0].toFixed(3)} to ${d.ci95[1].toFixed(3)}). One model and one task family; no general claim.`;
+  $("llmIntro").innerHTML = `${esc(L.meta.model)} as all seven agents (provider-default temperature), ${L.proposals} release-review proposals, the same private evidence in both conditions. Ballots against the agent's own evidence: sealed ${ae.sealed.k}/${ae.sealed.n}, open ${ae.open.k}/${ae.open.n}. Sealed − open accuracy ${d.mean >= 0 ? "+" : ""}${d.mean.toFixed(3)} (paired bootstrap 95% CI ${d.ci95[0] >= 0 ? "+" : ""}${d.ci95[0].toFixed(3)} to ${d.ci95[1] >= 0 ? "+" : ""}${d.ci95[1].toFixed(3)}; the conditions agreed on every proposal). One model and one task family; no general claim.`;
   // accuracy bars
   {
     const W = 340, H = 240, l = 40, b = 200, top = 58, ph = b - top, Y = v => b - v * ph;
@@ -672,8 +672,9 @@ function renderLLM(L) {
     const x0 = keys[0], x1 = keys[keys.length - 1], X = v => l + (v - x0 + .5) / (x1 - x0 + 1) * (W - l - r0), Y = v => b - v * ph;
     let s = `<text class="t" x="0" y="16">Who follows the crowd? Open condition</text><text x="0" y="32">P(vote against own evidence) by visible lead against it · dashed: scripted conformist of experiment 1</text>`;
     for (const g of [0, .5, 1]) s += `<line x1="${l}" x2="${W - r0}" y1="${Y(g)}" y2="${Y(g)}" stroke="var(--line)"/><text x="${l - 6}" y="${Y(g) + 4}" text-anchor="end">${g.toFixed(1)}</text>`;
+    const w = X(x0 + 1) - X(x0);
     let path = "";
-    keys.forEach((k, i) => { const y = Y(k >= 2 ? 1 : 0); path += `${i ? "L" : "M"}${X(k) - (X(keys[1] ?? k + 1) - X(k)) / 2},${y} L${X(k) + (X(keys[1] ?? k + 1) - X(k)) / 2},${y} `; });
+    keys.forEach((k, i) => { const y = Y(k >= 2 ? 1 : 0); path += `${i ? "L" : "M"}${X(k) - w / 2},${y} L${X(k) + w / 2},${y} `; });
     s += `<path d="${path}" fill="none" stroke="var(--ink-3)" stroke-width="1.3" stroke-dasharray="4 3"/>`;
     for (const k of keys) {
       const c = L.conformity_curve[k];
