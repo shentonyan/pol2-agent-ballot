@@ -35,6 +35,8 @@ import os
 import random
 import sys
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Callable, Dict, List
@@ -77,19 +79,65 @@ def evidence_for(prop: dict, correct: bool, rng: random.Random) -> str:
     return f"You re-ran the {bad} for release {prop['id']}: it failed, and you consider this a blocking issue."
 
 
+def _opener(base: str) -> urllib.request.OpenerDirector:
+    """Talk to a local server directly. On Windows, urllib picks up the system
+    proxy (e.g. a Clash/FlClash client), which can swallow requests to
+    localhost; a local endpoint never needs a proxy."""
+    host = urllib.parse.urlparse(base).hostname or ""
+    if host in ("localhost", "127.0.0.1", "::1") or host.endswith(".local"):
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener()
+
+
+def _post(opener, url: str, payload: dict, key: str, timeout: float) -> dict:
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})}
+    )
+    with opener.open(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+
+def preflight(base: str, model: str, key: str) -> None:
+    """Fail fast with an actionable message instead of hanging silently."""
+    opener = _opener(base)
+    root = base.rstrip("/")
+    print(f"checking {root} ...", flush=True)
+    try:
+        req = urllib.request.Request(root + "/models", headers={"Authorization": f"Bearer {key}"} if key else {})
+        with opener.open(req, timeout=10) as r:
+            models = [m.get("id") for m in json.loads(r.read()).get("data", [])]
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", e)
+        hint = "Start the server first (for Ollama: run `ollama serve`, or open the Ollama app)." if "localhost" in root or "127.0.0.1" in root else "Check LLM_BASE_URL, the network and any proxy."
+        sys.exit(f"cannot reach {root}: {reason}\n{hint}")
+    except Exception as e:
+        sys.exit(f"unexpected reply from {root}/models: {e}")
+    if models and model not in models:
+        listed = "\n  ".join(models) or "(none)"
+        sys.exit(f"model '{model}' is not available on this server. Available:\n  {listed}\n"
+                 f"Set $env:LLM_MODEL to one of these, or for Ollama run: ollama pull {model}")
+    print(f"model '{model}' found; sending one test request (the first call may take a while to load the model) ...", flush=True)
+    t0 = time.time()
+    try:
+        out = _post(opener, root + "/chat/completions",
+                    {"model": model, "temperature": 0, "messages": [{"role": "user", "content": 'Reply with {"ok": true}'}]}, key, timeout=300)
+        text = out["choices"][0]["message"]["content"]
+    except Exception as e:
+        sys.exit(f"test request failed: {e}")
+    print(f"test request answered in {time.time() - t0:.1f}s: {text.strip()[:60]!r}", flush=True)
+
+
 def openai_complete(base: str, model: str, key: str, temperature: float) -> Callable[[str], str]:
     url = base.rstrip("/") + "/chat/completions"
+    opener = _opener(base)
 
     def complete(prompt: str) -> str:
-        body = json.dumps(
-            {"model": model, "temperature": temperature, "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]}
-        ).encode()
-        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})})
+        payload = {"model": model, "temperature": temperature, "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]}
         for attempt in range(3):
             try:
-                with urllib.request.urlopen(req, timeout=120) as r:
-                    return json.loads(r.read())["choices"][0]["message"]["content"]
+                return _post(opener, url, payload, key, timeout=180)["choices"][0]["message"]["content"]
             except Exception as e:  # network hiccup: retry the call, not the answer
+                print(f"    request failed ({e}); retry {attempt + 1}/2", flush=True)
                 if attempt == 2:
                     return f"<error: {e}>"
                 time.sleep(2 * (attempt + 1))
@@ -120,11 +168,16 @@ def main() -> None:
         model = os.environ.get("LLM_MODEL")
         if not model:
             sys.exit("set LLM_MODEL (and LLM_BASE_URL / LLM_API_KEY if needed)")
+        preflight(base, model, os.environ.get("LLM_API_KEY", ""))
         complete = openai_complete(base, model, os.environ.get("LLM_API_KEY", ""), a.temperature)
         label = model
     else:
         complete, label = None, "mock-conformist"
 
+    total_calls = a.proposals * 2 * a.n
+    print(f"running {a.proposals} proposals x 2 conditions x {a.n} agents = {total_calls} ballots", flush=True)
+    t_start = time.time()
+    done = 0
     run_id = time.strftime("%Y%m%d-%H%M%S") + f"-{a.backend}"
     OUT.mkdir(parents=True, exist_ok=True)
     log = (OUT / f"{run_id}.jsonl").open("w", encoding="utf-8")
@@ -152,8 +205,15 @@ def main() -> None:
 
             # each agent sees only its own private evidence
             def decide_with_evidence(agent, ctx, prop=prop):
+                nonlocal done
                 p2 = Proposal(prop.proposal_id, prop.title, prop.body, prop.choices, {"your evidence": evidence[(pr["id"], agent._j)]})
-                return type(agent).decide(agent, p2, ctx)
+                out = type(agent).decide(agent, p2, ctx)
+                done += 1
+                if a.backend == "openai":
+                    el = time.time() - t_start
+                    eta = el / done * (total_calls - done)
+                    print(f"  [{done}/{total_calls}] {pr['id']} {cond:<6} {agent.identity.name}: {out[0] or 'invalid'}  (eta {eta / 60:.1f} min)", flush=True)
+                return out
 
             for ag in agents:
                 ag.decide = (lambda ctx_prop, ctx, ag=ag: decide_with_evidence(ag, ctx))  # type: ignore[assignment]
