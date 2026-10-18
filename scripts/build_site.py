@@ -26,6 +26,13 @@ def main() -> None:
     from pol2_agent_ballot.theory import cascade, condorcet, consensus
 
     data = {"headline": load("headline"), "sweep": load("sweep"), "consensus": load("consensus")}
+    llm_dir = RES / "llm_herding"
+    analyses = sorted(llm_dir.glob("*.analysis.json")) if llm_dir.exists() else []
+    if analyses:
+        best = max(analyses, key=lambda f: json.loads(f.read_text(encoding="utf-8"))["proposals"])
+        a = json.loads(best.read_text(encoding="utf-8"))
+        data["llm"] = {k: a[k] for k in ("meta", "proposals", "accuracy", "evidence_ceiling", "diff_sealed_minus_open", "against_evidence", "conformity_curve")}
+        data["llm"]["quotes"] = [b for b in a["ballots_against_evidence"] if b["condition"] == "open"][:3]
     for r in data["headline"] or []:
         r["exact_accuracy"] = condorcet(r["n"], r["p"]) if r["condition"] == "sealed" else cascade(r["n"], r["p"], r["lead"])["accuracy"]
     for r in data["consensus"] or []:

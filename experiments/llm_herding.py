@@ -265,6 +265,7 @@ def main() -> None:
                 nonlocal done
                 p2 = Proposal(prop.proposal_id, prop.title, prop.body, prop.choices, {"your evidence": evidence[(pr["id"], agent._j)]})
                 out = type(agent).decide(agent, p2, ctx)
+                agent._last = out
                 done += 1
                 if a.backend == "openai":
                     el = time.time() - t_start
@@ -286,7 +287,8 @@ def main() -> None:
                 st["ballots"] += 1
                 if b is not None and b.choice != own:
                     st["against_evidence"] += 1
-                log.write(json.dumps({"proposal": pr["id"], "truth": pr["truth"], "condition": cond, "agent": ag.identity.name, "evidence_says": own, "choice": b.choice if b else None, "rationale": b.rationale if b else None}, ensure_ascii=False) + "\n")
+                log.write(json.dumps({"proposal": pr["id"], "truth": pr["truth"], "condition": cond, "agent": ag.identity.name, "evidence_says": own, "choice": b.choice if b else None, "rationale": b.rationale if b else None,
+                                      **({} if b else {"invalid_reason": getattr(ag, "_last", ("", ""))[1]})}, ensure_ascii=False) + "\n")
             print(f"{pr['id']} {cond:<6} winner={run.tally.winner!s:<8} truth={pr['truth']:<7} counts={run.tally.counts}", flush=True)
     log.close()
 

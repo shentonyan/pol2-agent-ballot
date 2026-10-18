@@ -89,6 +89,32 @@ class ConformistAgent(ScriptedAgent):
         return sig, f"private signal suggests {sig!r}; no decisive visible majority"
 
 
+def parse_choice(raw: str, choices: Sequence[str]) -> Tuple[str, str]:
+    """Extract (choice, rationale) from a model reply, tolerating the usual
+    deviations from strict JSON: a leading <think> block, code fences, prose
+    around the object, \\' escapes, raw newlines inside strings. If no JSON
+    object parses, fall back to a `"choice": "<option>"` pattern. Returns
+    ("", reason) when no valid choice can be found, which the election records
+    as an invalid ballot."""
+    if not isinstance(raw, str):
+        return "", f"unparseable model output: {raw!r}"
+    visible = re.sub(r"<think>.*?</think>", "", raw, flags=re.S)
+    for cand in reversed(re.findall(r"\{[^{}]*\}", visible)):
+        for text in (cand, cand.replace("\\'", "'")):
+            try:
+                d = json.loads(text, strict=False)
+            except Exception:
+                continue
+            choice = str(d.get("choice", "")).strip().lower()
+            if choice in choices:
+                return choice, str(d.get("rationale", ""))
+    m = re.search(r'"choice"\s*:\s*"(' + "|".join(map(re.escape, choices)) + r')"', visible, re.I)
+    if m:
+        r = re.search(r'"rationale"\s*:\s*"(.*?)"\s*[},]', visible, re.S)
+        return m.group(1).lower(), (r.group(1) if r else "")
+    return "", f"unparseable model output: {raw[:300]!r}"
+
+
 @dataclass
 class LLMAgent:
     """Wraps a completion function. The prompt asks for JSON so the choice can
@@ -111,16 +137,7 @@ class LLMAgent:
         if context.get("visible_votes"):
             parts.append("Votes already cast: " + ", ".join(f"{n}->{c}" for n, c in context["visible_votes"]))
         raw = self.complete("\n\n".join(parts))
-        # reasoning models may prepend a <think>…</think> block; use the last JSON object
-        visible = re.sub(r"<think>.*?</think>", "", raw, flags=re.S)
-        objs = re.findall(r"\{[^{}]*\}", visible)
-        try:
-            d = json.loads(objs[-1] if objs else visible)
-            choice = str(d.get("choice"))
-            rationale = str(d.get("rationale", ""))
-        except Exception:
-            return "", f"unparseable model output: {raw[:200]!r}"
-        return choice, rationale
+        return parse_choice(raw, proposal.choices)
 
 
 @dataclass
