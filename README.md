@@ -296,8 +296,9 @@ python -m pytest -q             # 14 tests
 python scripts/build_site.py    # after changing site/app.html or rerunning experiments
 ```
 
-CI runs the tests and the demo script on every push. The live demo is served
-by GitHub Pages from `docs/` on `main`.
+CI runs the tests and the demo script on every push. The `pages` workflow
+publishes `docs/` to GitHub Pages (repository setting: Pages source =
+GitHub Actions).
 
 ## Citation
 
