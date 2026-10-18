@@ -1,8 +1,10 @@
 # Pre-registered protocol — do LLM agents herd under open voting?
 
-**Status: designed, not run.** Nothing in this repo claims a result for LLM
-agents. `sealed_vs_open.py` only demonstrates the mechanism with scripted
-conformists.
+**Status: implemented in `llm_herding.py`, not yet run.** Nothing in this repo
+claims a result for LLM agents. `sealed_vs_open.py` only demonstrates the
+mechanism with scripted conformists. Related measurements of LLM conformity:
+Weng et al. 2025 (BenchForm), Cho et al. 2025, Zhang et al. 2024; see
+[docs/related-work.md](../docs/related-work.md).
 
 ## Question
 When several LLM agents each receive a private, noisy piece of evidence and
@@ -31,10 +33,13 @@ compared with sealed voting?
 * If the model refuses or returns unparseable output, the ballot is invalid
   (not re-prompted) and the rate is reported.
 
-## How to run (once a completion function is wired)
-```python
-from pol2_agent_ballot.agents import LLMAgent
-agent = LLMAgent(identity, complete=my_completion_fn)
+## How to run
+```powershell
+python experiments/llm_herding.py --backend mock --proposals 40     # pipeline check
+$env:LLM_BASE_URL = "http://localhost:11434/v1"; $env:LLM_MODEL = "qwen2.5:7b-instruct"
+python experiments/llm_herding.py --backend openai --proposals 40
 ```
-Then adapt `sealed_vs_open.py` to build `LLMAgent`s instead of
-`ConformistAgent`s. No API keys or endpoints belong in this repository.
+Ballot-level logs go to `experiments/results/llm_herding/`. The task is a
+release review: each agent sees one private re-run of one check, which is
+wrong with probability 1 − p. No API keys or endpoints belong in this
+repository; they are read from environment variables.

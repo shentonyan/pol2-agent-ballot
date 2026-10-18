@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 — 2026-10-18
+
+- `theory.py`: exact results for every experiment (Condorcet sum, dynamic
+  programme for the sequential cascade, closed form for consensus rounds);
+  tests check them against brute-force enumeration and the simulator.
+- Experiment 1 sweeps rerun with 10,000 runs per point and an independent
+  seed per point (0.2.0 reused one seed across points, which correlated
+  their sampling errors). Exact values shown in every figure.
+- Experiment 3 (`experiments/llm_herding.py`): runnable test of herding among
+  language-model agents against any OpenAI-compatible endpoint, paired design
+  with bootstrap interval; mock backend for offline checks.
+- `docs/related-work.md` (42 references, `docs/references.bib`) and
+  `docs/related-repos.md` (25 projects).
+- New README with protocol diagram (`docs/assets/protocol.svg`); figures
+  redrawn in one style by `experiments/make_figures.py`.
+
 ## 0.2.0 — 2026-10-18
 
 - Consensus mode: `consensus.run_consensus` runs repeated sealed rounds with

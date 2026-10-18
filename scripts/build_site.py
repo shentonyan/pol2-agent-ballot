@@ -20,7 +20,16 @@ def load(name):
 
 
 def main() -> None:
+    import sys
+
+    sys.path.insert(0, str(ROOT / "src"))
+    from pol2_agent_ballot.theory import cascade, condorcet, consensus
+
     data = {"headline": load("headline"), "sweep": load("sweep"), "consensus": load("consensus")}
+    for r in data["headline"] or []:
+        r["exact_accuracy"] = condorcet(r["n"], r["p"]) if r["condition"] == "sealed" else cascade(r["n"], r["p"], r["lead"])["accuracy"]
+    for r in data["consensus"] or []:
+        r["exact_reached"] = consensus(r["n"], r["p"], r["stubborn"])["reached"]
     body = (ROOT / "site" / "app.html").read_text().replace("/*__RESULTS__*/null", json.dumps(data, separators=(",", ":")))
     head_end = body.index("<div class=\"wrap\">")
     page = (

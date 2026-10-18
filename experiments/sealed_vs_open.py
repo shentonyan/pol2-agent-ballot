@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from pol2_agent_ballot.agents import ConformistAgent, Proposal
 from pol2_agent_ballot.event import Event, run_transition_ballot
 from pol2_agent_ballot.identity import AgentIdentity
+from pol2_agent_ballot.theory import cascade, condorcet
 
 HERE = Path(__file__).resolve().parent
 RESULTS = HERE / "results"
@@ -144,14 +145,32 @@ def bootstrap_ci(outcomes: List[int], rng: random.Random) -> Tuple[float, float]
 
 
 def sweep(p_fixed: float, n_values: List[int], p_values: List[float], n_fixed: int, lead: int, trials: int, seed: int) -> Dict:
+    """Each point gets its own seed so that sampling errors are independent
+    across points (a shared seed makes neighbouring points move together)."""
     out = {"by_n": [], "by_p": []}
+    i = 0
     for n in n_values:
         for sealed in (True, False):
-            out["by_n"].append(run_condition(n, p_fixed, lead, sealed, trials, seed, protocol=False))
+            i += 1
+            out["by_n"].append(with_exact(run_condition(n, p_fixed, lead, sealed, trials, seed * 1000 + i, protocol=False)))
     for p in p_values:
         for sealed in (True, False):
-            out["by_p"].append(run_condition(n_fixed, p, lead, sealed, trials, seed, protocol=False))
+            i += 1
+            out["by_p"].append(with_exact(run_condition(n_fixed, p, lead, sealed, trials, seed * 1000 + i, protocol=False)))
     return out
+
+
+def with_exact(row: Dict) -> Dict:
+    """Attach the exact probability from pol2_agent_ballot.theory."""
+    if row["condition"] == "sealed":
+        row["exact_accuracy"] = condorcet(row["n"], row["p"])
+        row["exact_conformity_rate"] = 0.0
+    else:
+        c = cascade(row["n"], row["p"], row["lead"])
+        row["exact_accuracy"] = c["accuracy"]
+        row["exact_conformity_rate"] = c["conformity_rate"]
+    row["exact_inside_ci95"] = row["ci95"][0] <= row["exact_accuracy"] <= row["ci95"][1]
+    return row
 
 
 # --------------------------------------------------------------------------
@@ -261,21 +280,27 @@ def main() -> None:
     ap.add_argument("--sweep", action="store_true", help="also sweep N and p (fast path)")
     ap.add_argument("--sweep-trials", type=int, default=3000)
     ap.add_argument("--plot", action="store_true", help="write PNG figures")
+    ap.add_argument("--reuse-headline", action="store_true", help="keep results/headline.json, rerun only sweeps/plots")
     a = ap.parse_args()
     RESULTS.mkdir(exist_ok=True)
     FIGURES.mkdir(exist_ok=True)
 
-    headline = [run_condition(a.n, a.p, a.lead, sealed, a.trials, a.seed, protocol=not a.fast) for sealed in (True, False)]
+    if a.reuse_headline and (RESULTS / "headline.json").exists():
+        headline = [with_exact(r) for r in json.loads((RESULTS / "headline.json").read_text())]
+    else:
+        headline = [with_exact(run_condition(a.n, a.p, a.lead, sealed, a.trials, a.seed, protocol=not a.fast)) for sealed in (True, False)]
     print(f"N={a.n} agents, private accuracy p={a.p}, conformity lead={a.lead}, trials={a.trials:,}, path={'fast' if a.fast else 'protocol'}")
     print(f"{'condition':<10}{'P(correct)':>12}{'95% CI':>20}{'conformity':>12}{'seconds':>9}")
     for r in headline:
-        print(f"{r['condition']:<10}{r['accuracy']:>12.4f}{r['ci95'][0]:>10.4f}–{r['ci95'][1]:<9.4f}{r['conformity_rate']:>12.4f}{r['seconds']:>9}")
+        print(f"{r['condition']:<10}{r['accuracy']:>12.4f}{r['ci95'][0]:>10.4f}–{r['ci95'][1]:<9.4f}{r['conformity_rate']:>12.4f}{r['seconds']:>9}   exact {r['exact_accuracy']:.4f}")
     (RESULTS / "headline.json").write_text(json.dumps(headline, indent=1))
 
     sw = None
     if a.sweep:
         sw = sweep(a.p, [3, 5, 7, 9, 13, 17, 21, 25], [0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9], a.n, a.lead, a.sweep_trials, a.seed)
         (RESULTS / "sweep.json").write_text(json.dumps(sw, indent=1))
+        pts = sw["by_n"] + sw["by_p"]
+        print(f"exact value inside the 95% CI at {sum(r['exact_inside_ci95'] for r in pts)} of {len(pts)} sweep points")
         print("\nsweep written to", RESULTS / "sweep.json")
 
     if a.plot:

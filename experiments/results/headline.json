@@ -13,7 +13,10 @@
    0.906592937516335
   ],
   "conformity_rate": 0.0,
-  "seconds": 227.7
+  "seconds": 227.7,
+  "exact_accuracy": 0.90119134,
+  "exact_conformity_rate": 0.0,
+  "exact_inside_ci95": true
  },
  {
   "condition": "open",
@@ -29,6 +32,9 @@
    0.8467430347661222
   ],
   "conformity_rate": 0.2258777777777778,
-  "seconds": 230.1
+  "seconds": 230.1,
+  "exact_accuracy": 0.8403209919999999,
+  "exact_conformity_rate": 0.22641005333333336,
+  "exact_inside_ci95": true
  }
 ]
