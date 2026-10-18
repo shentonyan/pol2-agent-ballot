@@ -109,28 +109,67 @@ def _post(opener, url: str, payload: dict, key: str, timeout: float) -> dict:
         return json.loads(r.read())
 
 
+SEND_TEMPERATURE = True  # cleared if the provider rejects the parameter
+
+
+def _chat(opener, url: str, payload: dict, key: str, timeout: float, retries: int = 8) -> dict:
+    """POST with two kinds of recovery: drop `temperature` once if the model
+    rejects it, and retry transient network failures (e.g. a proxy that
+    drops TLS connections) with growing back-off. HTTP errors other than the
+    temperature one are raised immediately."""
+    global SEND_TEMPERATURE
+    for attempt in range(retries):
+        body = dict(payload)
+        if not SEND_TEMPERATURE:
+            body.pop("temperature", None)
+        try:
+            return _post(opener, url, body, key, timeout)
+        except urllib.error.HTTPError as e:
+            text = e.read().decode("utf-8", "replace")
+            if e.code == 400 and "temperature" in text and SEND_TEMPERATURE:
+                print("  model does not accept `temperature`; using the provider default", flush=True)
+                SEND_TEMPERATURE = False
+                continue
+            raise urllib.error.HTTPError(e.url, e.code, text[:500], e.headers, None)
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+            if attempt == retries - 1:
+                raise
+            wait = min(30, 3 * (attempt + 1))
+            print(f"    network error ({str(e)[:60]}); retry {attempt + 1}/{retries - 1} in {wait}s", flush=True)
+            time.sleep(wait)
+    raise RuntimeError("unreachable")
+
+
 def preflight(base: str, model: str, key: str) -> None:
     """Fail fast with an actionable message instead of hanging silently."""
     opener = _opener(base)
     root = base.rstrip("/")
+    local = "localhost" in root or "127.0.0.1" in root
     if "anthropic.com" in root and key.startswith("sk-ant-usr") and not os.environ.get("LLM_WORKSPACE_ID"):
         print("  warning: personal keys (sk-ant-usr-…) usually need LLM_WORKSPACE_ID (Console → Workspaces → ID)", flush=True)
     print(f"checking {root} ...", flush=True)
-    try:
-        req = urllib.request.Request(root + "/models", headers={**({"Authorization": f"Bearer {key}"} if key else {}), **_extra_headers()})
-        with opener.open(req, timeout=10) as r:
-            models = [m.get("id") for m in json.loads(r.read()).get("data", [])]
-    except urllib.error.HTTPError as e:
-        # some providers (e.g. Anthropic's OpenAI-compatible layer) do not serve
-        # /models with bearer auth; the test request below is the real check
-        print(f"  /models not available ({e.code}); skipping the model list", flush=True)
-        models = []
-    except urllib.error.URLError as e:
-        reason = getattr(e, "reason", e)
-        hint = "Start the server first (for Ollama: run `ollama serve`, or open the Ollama app)." if "localhost" in root or "127.0.0.1" in root else "Check LLM_BASE_URL, the network and any proxy."
-        sys.exit(f"cannot reach {root}: {reason}\n{hint}")
-    except Exception as e:
-        sys.exit(f"unexpected reply from {root}/models: {e}")
+    models: list = []
+    headers = {**({"Authorization": f"Bearer {key}"} if key else {}), **_extra_headers()}
+    for attempt in range(1 if local else 5):
+        try:
+            with opener.open(urllib.request.Request(root + "/models", headers=headers), timeout=10) as r:
+                models = [m.get("id") for m in json.loads(r.read()).get("data", [])]
+            break
+        except urllib.error.HTTPError as e:
+            # some providers (e.g. Anthropic's OpenAI-compatible layer) do not serve
+            # /models with bearer auth; the test request below is the real check
+            print(f"  /models not available ({e.code}); skipping the model list", flush=True)
+            break
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", e)
+            if local:
+                sys.exit(f"cannot reach {root}: {reason}\nStart the server first (for Ollama: run `ollama serve`, or open the Ollama app).")
+            if attempt == 4:
+                sys.exit(f"cannot reach {root}: {reason}\nCheck LLM_BASE_URL, the network and any proxy.")
+            print(f"  network error ({str(reason)[:60]}); retry {attempt + 1}/4 in 5s", flush=True)
+            time.sleep(5)
+        except Exception as e:
+            sys.exit(f"unexpected reply from {root}/models: {e}")
     if models and model not in models:
         listed = "\n  ".join(models) or "(none)"
         sys.exit(f"model '{model}' is not available on this server. Available:\n  {listed}\n"
@@ -138,12 +177,11 @@ def preflight(base: str, model: str, key: str) -> None:
     print(f"{'model ' + repr(model) + ' found; ' if models else ''}sending one test request (the first call may take a while to load the model) ...", flush=True)
     t0 = time.time()
     try:
-        out = _post(opener, root + "/chat/completions",
-                    {"model": model, "temperature": 0, "messages": [{"role": "user", "content": 'Reply with {"ok": true}'}]}, key, timeout=300)
+        out = _chat(opener, root + "/chat/completions",
+                    {"model": model, "temperature": 0, "max_tokens": 50, "messages": [{"role": "user", "content": 'Reply with {"ok": true}'}]}, key, timeout=300)
         text = out["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")[:500]
-        sys.exit(f"test request failed: HTTP {e.code}\n{body}")
+        sys.exit(f"test request failed: HTTP {e.code}\n{e.msg}")
     except Exception as e:
         sys.exit(f"test request failed: {e}")
     print(f"test request answered in {time.time() - t0:.1f}s: {text.strip()[:60]!r}", flush=True)
@@ -154,16 +192,13 @@ def openai_complete(base: str, model: str, key: str, temperature: float) -> Call
     opener = _opener(base)
 
     def complete(prompt: str) -> str:
-        payload = {"model": model, "temperature": temperature, "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]}
-        for attempt in range(3):
-            try:
-                return _post(opener, url, payload, key, timeout=180)["choices"][0]["message"]["content"]
-            except Exception as e:  # network hiccup: retry the call, not the answer
-                print(f"    request failed ({e}); retry {attempt + 1}/2", flush=True)
-                if attempt == 2:
-                    return f"<error: {e}>"
-                time.sleep(2 * (attempt + 1))
-        return ""
+        payload = {"model": model, "temperature": temperature, "max_tokens": 400,
+                   "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]}
+        try:
+            return _chat(opener, url, payload, key, timeout=180)["choices"][0]["message"]["content"]
+        except Exception as e:  # recorded as an invalid ballot, never re-asked
+            print(f"    request failed for good ({str(e)[:80]}); ballot will be invalid", flush=True)
+            return f"<error: {e}>"
 
     return complete
 
@@ -260,7 +295,7 @@ def main() -> None:
     for c, st in stats.items():
         print(f"{c:<8}{st['correct'] / a.proposals:>12.3f}{st['against_evidence'] / st['ballots']:>23.3f}{int(st['invalid']):>9}{int(st['audit_fail']):>13}")
     diffs = [v["sealed"] - v["open"] for v in paired.values()]
-    summary_row = {"run": run_id, "model": label, "n": a.n, "p": a.p, "temperature": a.temperature, "proposals": a.proposals,
+    summary_row = {"run": run_id, "model": label, "n": a.n, "p": a.p, "temperature": a.temperature if SEND_TEMPERATURE else "provider default", "proposals": a.proposals,
                    **{f"{c}_{k}": (st[k] / a.proposals if k == "correct" else st[k] / st["ballots"] if k == "against_evidence" else st[k])
                       for c, st in stats.items() for k in ("correct", "against_evidence", "invalid", "audit_fail")}}
     brng = random.Random(a.seed + 3)
