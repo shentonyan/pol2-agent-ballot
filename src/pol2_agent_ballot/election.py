@@ -142,6 +142,42 @@ class Election:
         self._sk = None
         return self.shares
 
+    def install_custody_manifest(self, manifest: dict) -> None:
+        """Install only public, encrypted ceremony output from an offline dealer."""
+        from .custody import validate_manifest
+
+        if self.stage is not Stage.SETUP or self.public_key is not None:
+            raise RuntimeError("keys already configured")
+        body = validate_manifest(manifest, json.loads(self.config.canonical()), self.organiser.agent_id)
+        self.public_key = PublicKey(body["public_key"], encoder=HexEncoder)
+        self._append("key_ceremony", {"public_key": body["public_key"],
+                     "k": body["k"], "n": body["n"], "custody_manifest": manifest})
+
+    def import_decryption(self, export: dict) -> Dict[str, Ballot]:
+        """Accept independently auditable key-application output after close."""
+        from .verify import Auditor
+
+        if self.stage is not Stage.CLOSED:
+            raise RuntimeError("close the election first")
+        if "custody_manifest" not in next(e.payload for e in self.log if e.kind == "key_ceremony"):
+            raise RuntimeError("external custody was not configured")
+        log = export["log"]
+        if (len(log) != len(self.log) + 1 or log[-1]["kind"] != "decrypt"
+                or canonical(log[:-1]) != canonical(self.export_log())
+                or canonical(export["envelopes"]) != canonical(self.export_envelopes())):
+            raise ValueError("key application changed the collector's closed record")
+        report = Auditor(log, export["envelopes"], trusted_organiser=self.organiser.agent_id).run()
+        if not report.ok:
+            raise ValueError("key application output failed audit: " + "; ".join(report.failures))
+        payload = log[-1]["payload"]
+        self.decrypted = {aid: Ballot(self.config.election_id, aid, **b)
+                          for aid, b in payload["valid"].items()}
+        self.invalid = dict(payload["invalid"])
+        self.recovered_sk = PrivateKey(bytes.fromhex(payload["published_private_key"]))
+        self.log.append(LogEntry(**log[-1]))
+        self.stage = Stage.DECRYPTED
+        return self.decrypted
+
     def open(self) -> None:
         if self.stage is not Stage.SETUP:
             raise RuntimeError("election can only be opened once")

@@ -14,6 +14,7 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
       - run: python examples/run_demo.py
+      - run: python examples/run_distributed_demo.py --directory "${{ runner.temp }}/ballot-distributed-demo"
       - name: Site is up to date with site/app.html and results
         run: |
           python scripts/build_site.py

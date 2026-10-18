@@ -58,9 +58,19 @@ class AuditReport:
 class Auditor:
     """Verify an exported election with no access to live objects."""
 
-    def __init__(self, log: List[dict], envelopes: List[dict]):
+    def __init__(self, log: List[dict], envelopes: List[dict], *,
+                 trusted_organiser: Optional[str] = None,
+                 receipts: Optional[List[dict]] = None,
+                 checkpoints: Optional[List[dict]] = None,
+                 trusted_witnesses: Optional[List[str]] = None,
+                 require_complete: bool = False):
         self.log = log
         self.envelopes = envelopes
+        self.trusted_organiser = trusted_organiser
+        self.receipts = receipts or []
+        self.checkpoints = checkpoints or []
+        self.trusted_witnesses = trusted_witnesses or []
+        self.require_complete = require_complete
 
     def _entries(self, kind: str) -> List[dict]:
         return [e for e in self.log if e["kind"] == kind]
@@ -124,6 +134,13 @@ class Auditor:
 
         # 2. config + roster signatures
         cfg_e = self._entries("config")[0]
+        if (self.trusted_organiser is not None
+                and cfg_e["payload"]["organiser"] != self.trusted_organiser):
+            r.failed("organiser does not match independently trusted key")
+            return r
+        if self.require_complete and not self._entries("tally"):
+            r.failed("complete audit requires a tally record")
+            return r
         organiser = VerifyKey(cfg_e["payload"]["organiser"].encode(), encoder=HexEncoder)
         try:
             organiser.verify(canonical(cfg_e["payload"]["config"]), bytes.fromhex(cfg_e["payload"]["signature"]))
@@ -139,6 +156,16 @@ class Auditor:
             r.passed(f"roster signed by organiser ({len(registry.ids())} eligible agents)")
         else:
             r.failed("roster signature invalid or signed by someone else")
+
+        ceremony_records = self._entries("key_ceremony")
+        if ceremony_records and "custody_manifest" in ceremony_records[0]["payload"]:
+            from .custody import validate_manifest
+
+            ceremony = ceremony_records[0]["payload"]
+            manifest_body = validate_manifest(ceremony["custody_manifest"], cfg, cfg_e["payload"]["organiser"])
+            if any(ceremony[k] != manifest_body[k] for k in ("public_key", "k", "n")):
+                r.failed("key ceremony does not match signed custody manifest")
+                return r
 
         # 3. envelopes vs log
         ballot_entries = self._entries("ballot")
@@ -193,6 +220,18 @@ class Auditor:
         if not r.failures:
             r.passed(f"all {len(envelopes)} envelopes registered, eligible, correctly signed")
 
+        # External copies survive deletion of both an envelope and its log entry.
+        from .evidence import verify_external
+
+        try:
+            verify_external(self.log, self.envelopes, cfg_e["payload"]["organiser"],
+                            self.receipts, self.checkpoints, self.trusted_witnesses)
+            if self.receipts or self.checkpoints:
+                r.passed("independent receipts and trusted checkpoints match")
+        except (ValueError, KeyError, TypeError, IndexError) as exc:
+            r.failed(f"external evidence mismatch: {exc}")
+            return r
+
         # 4. re-vote rule: final = latest by log sequence
         final: Dict[str, Envelope] = {}
         for aid, envs in seen.items():
@@ -206,6 +245,22 @@ class Auditor:
             r.passed("no decrypt record yet (election still open/closed)")
             return r
         dec = dec[0]["payload"]
+        if ceremony_records and "custody_manifest" in ceremony_records[0]["payload"]:
+            from .custody import verify_release_attestations
+            from .evidence import verify_signed
+
+            manifest = ceremony_records[0]["payload"]["custody_manifest"]
+            close_entry = self._entries("close")[0]
+            verify_release_attestations(manifest, close_entry["hash"], dec["custodian_releases"])
+            if dec["shares_used"] != [c["payload"]["index"] for c in dec["custodian_releases"][:manifest_body["k"]]]:
+                r.failed("share indices differ from signed custodian releases")
+                return r
+            cp = verify_signed(dec["closing_checkpoint"], manifest_body["witness"])
+            verify_external(self.log, self.envelopes, cfg_e["payload"]["organiser"], [],
+                            [dec["closing_checkpoint"]], [manifest_body["witness"]])
+            if cp["phase"] != "close" or cp["seq"] != close_entry["seq"]:
+                r.failed("custodians did not attest this closing checkpoint")
+                return r
         sk = PrivateKey(bytes.fromhex(dec["published_private_key"]))
         pk_hex = self._entries("key_ceremony")[0]["payload"]["public_key"]
         if sk.public_key != PublicKey(pk_hex.encode(), encoder=HexEncoder):

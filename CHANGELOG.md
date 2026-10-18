@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add an opt-in offline dealer, separately encrypted custodian shares, pinned
+  identities, witnessed-close release CLIs and a separate key application. Keep
+  plaintext shares out of the collector; retain signed release authorisations.
+- Add durable independent receipt storage, monotonic witness-signed checkpoints,
+  public-key-only final auditing and optional external evidence/trust pins in
+  `Auditor`; detect joint ballot/log omission, truncation and rollback.
+- Add a subprocess-based distributed demo, deployment/failure documentation and
+  adversarial integration tests. Preserve the existing in-process experiment API.
+
 - Validate custodian share indices, field values and integer thresholds; reject
   duplicate shares before reconstructing a key.
 - Preserve custom choice spelling in model replies and reject ambiguous

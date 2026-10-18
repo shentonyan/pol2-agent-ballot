@@ -313,12 +313,22 @@ ballots or unmet quorum. Malformed exports return a failed `AuditReport`.
 An audit of an unfinished election only validates the records available so far;
 it is not evidence of a completed decision.
 
-The organiser key is currently read from the export. A verifier must establish
-that key's identity separately. A self-contained export cannot prove that a
-collector did not omit both a ballot and its corresponding log record; detecting
-that requires independently retained receipts or a trusted ledger checkpoint.
-Hash chaining alone is not an external trust anchor. All key shares are held in
-one process in this prototype; it does not enforce separation between custodians.
+An optional [distributed custody and evidence workflow](docs/distributed-custody.md)
+now runs the offline dealer, individual custodians, witness and key application
+in separate CLI processes. The collector holds only encrypted share packets;
+custodians require a pinned witness's exact closing checkpoint before releasing
+shares sealed to the pinned key application. The export includes signed release
+authorisations. A public-key-only final audit checks independently retained
+receipts and a final checkpoint, detecting joint ballot/log omission and tail
+truncation. Run `python examples/run_distributed_demo.py --directory ../ballot-demo-run`
+with a new directory outside this repo (it contains demo private identities).
+
+The default in-process API remains for experiments and holds all shares in one
+process. Actual custodian isolation requires separate accounts/hosts and access
+controls; this prototype supplies no network daemon, DKG or HSM. The offline
+dealer is trusted. Hash chaining alone is not an external trust anchor: callers
+must independently trust organiser/witness public keys and retain the latest
+evidence. See the workflow's deployment and failure limits.
 
 **Not addressed:**
 
