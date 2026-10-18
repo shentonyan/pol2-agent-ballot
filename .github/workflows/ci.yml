@@ -3,10 +3,18 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12"}
-      - run: pip install -e .[dev]
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
       - run: python -m pytest -q
       - run: python examples/run_demo.py
+      - name: Site is up to date with site/app.html and results
+        run: |
+          python scripts/build_site.py
+          git diff --exit-code docs/index.html

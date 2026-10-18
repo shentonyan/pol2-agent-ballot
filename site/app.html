@@ -1,0 +1,631 @@
+<title>pol2-agent-ballot</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Live, step-by-step demo of IVXV-style sealed ballots among AI agents deciding PoL2 / NaturalDAO events.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a control bar over a three-column "polling station" (agents | collector ledger | key custodians),
+   then outcome + audit, then the published experiment results. Blue = sealed, amber = open, green = audit pass. */
+:root{
+  --bg:#F3F5F9; --surface:#FFFFFF; --sunken:#E9EDF4; --line:#D6DCE6;
+  --ink:#121826; --ink-2:#465166; --ink-3:#6E7890;
+  --sealed:#2459C9; --sealed-soft:#DCE6FA;
+  --open:#C46A12; --open-soft:#F8E6D2;
+  --pass:#1F8A5B; --pass-soft:#D8F0E4; --fail:#C23B3B; --fail-soft:#F7DCDC;
+  --f-display:"Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --r:8px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0D121C; --surface:#151C29; --sunken:#1B2433; --line:#2A3446;
+  --ink:#E7ECF5; --ink-2:#B1BBCD; --ink-3:#8590A6;
+  --sealed:#6E9BF5; --sealed-soft:#1D2B4A; --open:#EE9A47; --open-soft:#3A2814;
+  --pass:#4CC48B; --pass-soft:#16362A; --fail:#F07272; --fail-soft:#3D1D1F; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D121C; --surface:#151C29; --sunken:#1B2433; --line:#2A3446;
+  --ink:#E7ECF5; --ink-2:#B1BBCD; --ink-3:#8590A6;
+  --sealed:#6E9BF5; --sealed-soft:#1D2B4A; --open:#EE9A47; --open-soft:#3A2814;
+  --pass:#4CC48B; --pass-soft:#16362A; --fail:#F07272; --fail-soft:#3D1D1F; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body);margin:0}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(26px,3.4vw,36px);font-weight:700}
+h2{font-size:21px;font-weight:600}
+h3{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3)}
+p{margin:0}
+a{color:var(--sealed)}
+.mono{font-family:var(--f-mono);font-size:12px}
+.muted{color:var(--ink-3)}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end;justify-content:space-between;margin-bottom:18px}
+header.top .lede{max-width:68ch;color:var(--ink-2);margin-top:6px}
+header.top nav{display:flex;gap:16px;font-size:14px}
+/* controls */
+.controls{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-wrap:wrap;gap:14px 20px;align-items:end}
+.tabs{display:flex;background:var(--sunken);border-radius:7px;padding:3px;gap:2px}
+.tabs button{border:0;background:transparent;color:var(--ink-2);font:600 13px var(--f-body);padding:7px 12px;border-radius:5px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-3)}
+.field input,.field select{font:14px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:96px}
+.field select{width:auto}
+.field.check{flex-direction:row;align-items:center;gap:6px;color:var(--ink-2);font-size:13px;padding-bottom:6px}
+.btns{display:flex;gap:8px;margin-left:auto}
+.btn{font:600 13px var(--f-body);border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn:focus-visible,.tabs button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--sealed);outline-offset:2px}
+.btn[disabled]{opacity:.45;cursor:default}
+/* phase rail + narration */
+.rail{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 8px}
+.rail span{font:500 12px var(--f-body);padding:4px 10px;border-radius:999px;background:var(--sunken);color:var(--ink-3)}
+.rail span.done{color:var(--ink-2)}
+.rail span.now{background:var(--ink);color:var(--bg)}
+.say{font:500 17px/1.45 var(--f-display);min-height:2.9em;max-width:90ch}
+.say small{display:block;font:13px var(--f-body);color:var(--ink-3);margin-top:2px}
+.rounds{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.rounds span{font:12px var(--f-mono);padding:3px 8px;border:1px solid var(--line);border-radius:5px;color:var(--ink-2)}
+.rounds span.ok{border-color:var(--pass);color:var(--pass)}
+/* stage */
+.stage{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1.15fr) minmax(0,.8fr);gap:14px;margin-top:14px}
+@media (max-width:980px){.stage{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.panel header{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.agent{border:1px solid var(--line);border-radius:7px;padding:9px 10px;display:flex;flex-direction:column;gap:5px;background:var(--bg);transition:border-color .25s, background .25s}
+.agent.active{border-color:var(--ink);background:var(--surface)}
+.agent .nm{display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:14px}
+.agent .id{font:11px var(--f-mono);color:var(--ink-3)}
+.chip{display:inline-flex;align-items:center;gap:5px;font:500 11px var(--f-body);padding:2px 7px;border-radius:999px;background:var(--sunken);color:var(--ink-2);width:max-content;max-width:100%}
+.chip.adv{background:var(--pass-soft);color:var(--pass)}
+.chip.hold{background:var(--fail-soft);color:var(--fail)}
+.chip.sealed{background:var(--sealed-soft);color:var(--sealed)}
+.chip.open{background:var(--open-soft);color:var(--open)}
+.agent .why{font-size:12px;color:var(--ink-2);line-height:1.4}
+.agent .saw{font:11px var(--f-mono);color:var(--open)}
+.env{width:26px;height:18px;flex:none}
+.ledger{font:12px/1.5 var(--f-mono);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px;height:390px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.entry{display:grid;grid-template-columns:30px 76px minmax(0,1fr);gap:6px;padding:4px 6px;border-radius:5px;align-items:start}
+.entry.new{background:var(--sealed-soft)}
+.entry.bad{background:var(--fail-soft)}
+.entry .k{font-weight:500;color:var(--ink)}
+.entry .h{color:var(--ink-3);overflow-wrap:anywhere}
+.entry .d{grid-column:2/4;color:var(--ink-2);overflow-wrap:anywhere}
+.keybox{display:flex;flex-direction:column;gap:8px}
+.share{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px dashed var(--line);border-radius:7px;padding:8px 10px;font-size:13px}
+.share.used{border-style:solid;border-color:var(--sealed);background:var(--sealed-soft)}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-size:13px}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0;overflow-wrap:anywhere}
+/* outcome */
+.outcome{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:14px}
+@media (max-width:820px){.outcome{grid-template-columns:1fr}}
+.bar{display:flex;height:34px;border-radius:6px;overflow:hidden;background:var(--sunken);position:relative}
+.bar div{display:flex;align-items:center;justify-content:center;font:600 13px var(--f-body);color:#fff;transition:width .5s}
+.bar .a{background:var(--pass)} .bar .h{background:var(--fail)}
+.bar .thr{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink)}
+.verdict{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}
+.badge{font:600 13px var(--f-body);padding:4px 10px;border-radius:6px}
+.badge.go{background:var(--pass-soft);color:var(--pass)} .badge.stop{background:var(--fail-soft);color:var(--fail)} .badge.wait{background:var(--sunken);color:var(--ink-3)}
+.track{display:flex;flex-wrap:wrap;gap:4px;font-size:12px}
+.track span{padding:3px 8px;border-radius:5px;background:var(--sunken);color:var(--ink-3)}
+.track span.cur{background:var(--ink);color:var(--bg)}
+.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.checks li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:6px}
+.checks .ok{color:var(--pass)} .checks .no{color:var(--fail)} .checks .pend{color:var(--ink-3)}
+/* results */
+section.results{margin-top:40px;display:flex;flex-direction:column;gap:14px}
+section.results .intro{max-width:72ch;color:var(--ink-2)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;min-width:0}
+.chart svg{width:100%;height:auto;display:block}
+.chart svg text{fill:var(--ink-2);font:11px var(--f-body)}
+.chart svg .t{fill:var(--ink);font:600 13px var(--f-body)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink-2);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.note{font-size:13px;color:var(--ink-3);max-width:90ch}
+table.map{border-collapse:collapse;font-size:13px;width:100%}
+table.map th,table.map td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.map th{font-weight:600;color:var(--ink-3);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.scroll{overflow-x:auto}
+footer{margin-top:40px;font-size:13px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:8px 20px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div>
+    <h1>pol2-agent-ballot</h1>
+    <p class="lede">Sealed, auditable ballots for AI agents. Each run below executes the protocol in your browser with real cryptography: Ed25519 signatures, sealed-box encryption to an election key split 2-of-3 among custodians, a SHA-256 hash-chained ledger, and an independent audit that recomputes the result.</p>
+  </div>
+  <nav><a href="https://github.com/shentonyan/pol2-agent-ballot">GitHub</a><a href="https://github.com/shentonyan/pol2-agent-ballot/blob/main/docs/design.md">Design</a><a href="#results">Results</a></nav>
+</header>
+
+<div class="controls" role="group" aria-label="Simulation settings">
+  <div class="field"><span>Mode</span>
+    <div class="tabs" id="modeTabs">
+      <button type="button" data-mode="sealed" aria-pressed="true">Sealed ballot</button>
+      <button type="button" data-mode="open" aria-pressed="false">Open sequential</button>
+      <button type="button" data-mode="consensus" aria-pressed="false">Consensus rounds</button>
+    </div>
+  </div>
+  <label class="field">Agents<input id="nAgents" type="number" min="3" max="15" value="7"></label>
+  <label class="field">Signal accuracy p<input id="pAcc" type="number" min="0.5" max="1" step="0.05" value="0.7"></label>
+  <label class="field" id="ruleField">Decision rule<select id="rule"><option value="majority">Majority (&gt;1/2)</option><option value="supermajority">Supermajority (≥2/3)</option><option value="unanimous">Unanimous</option></select></label>
+  <label class="field" id="stubField" hidden>Stubborn agents<input id="stubborn" type="number" min="0" max="4" value="0"></label>
+  <label class="field">Seed<input id="seed" type="number" value="7"></label>
+  <label class="field">Collector<select id="collector"><option value="honest">Honest</option><option value="tally">Alters the tally</option><option value="drop">Drops a ballot</option></select></label>
+  <label class="field check" id="revoteField"><input id="revote" type="checkbox" checked> One agent re-votes</label>
+  <div class="btns">
+    <button class="btn" id="btnReset" type="button">New run</button>
+    <button class="btn" id="btnStep" type="button">Step</button>
+    <button class="btn primary" id="btnPlay" type="button">Play</button>
+  </div>
+</div>
+
+<div class="rail" id="rail" aria-label="Protocol phase"></div>
+<p class="say" id="say" aria-live="polite">Preparing the election…</p>
+<div class="rounds" id="rounds"></div>
+
+<div class="stage">
+  <section class="panel" aria-labelledby="hAgents">
+    <header><h3 id="hAgents">Agents</h3><span class="muted" style="font-size:12px">private signals are shown to you, not to the other agents</span></header>
+    <div class="agents" id="agents"></div>
+  </section>
+  <section class="panel" aria-labelledby="hLedger">
+    <header><h3 id="hLedger">Collector ledger</h3><span class="mono muted" id="ledgerHead"></span></header>
+    <div class="ledger" id="ledger"></div>
+  </section>
+  <section class="panel" aria-labelledby="hKey">
+    <header><h3 id="hKey">Election key</h3></header>
+    <dl class="kv" id="keyInfo"></dl>
+    <div class="keybox" id="shares"></div>
+  </section>
+</div>
+
+<div class="outcome">
+  <section class="panel" aria-labelledby="hTally">
+    <header><h3 id="hTally">Tally and decision</h3><span class="muted" id="ruleNote" style="font-size:12px"></span></header>
+    <div class="bar" id="bar"><div class="a" style="width:0"></div><div class="h" style="width:0"></div><span class="thr" id="thr"></span></div>
+    <div class="verdict" id="verdict"><span class="badge wait">Waiting for the close</span></div>
+    <div class="track" id="track"></div>
+  </section>
+  <section class="panel" aria-labelledby="hAudit">
+    <header><h3 id="hAudit">Independent audit</h3><span class="muted" style="font-size:12px">recomputed from the exported ledger and envelopes only</span></header>
+    <ul class="checks" id="checks"></ul>
+  </section>
+</div>
+
+<section class="results" id="results">
+  <h2>Results</h2>
+  <p class="intro">Monte Carlo runs of the same protocol in Python, with scripted agents. Conformist agents follow a visible majority once it leads by two votes. In the sealed condition nothing is visible before the close, so each ballot carries the agent's own evidence.</p>
+  <div class="charts">
+    <div class="chart" id="chHeadline"></div>
+    <div class="chart" id="chSweepN"></div>
+    <div class="chart" id="chConsensus"></div>
+  </div>
+  <p class="note">Error bars and bands are Wilson 95% intervals. These are simulations of scripted agents; they show what sealing protects against, not how language-model agents or people behave. A pre-registered protocol for language-model agents is in the repository and has not been run.</p>
+
+  <h2 style="margin-top:18px">How the protocol maps to IVXV</h2>
+  <div class="scroll">
+  <table class="map">
+    <thead><tr><th>IVXV (Estonian online voting)</th><th>This protocol</th><th>Difference</th></tr></thead>
+    <tbody>
+      <tr><td>Signed voter list</td><td>Organiser-signed agent roster (Ed25519 keys)</td><td>No PKI; the organiser key is the trust anchor</td></tr>
+      <tr><td>Inner envelope: ElGamal ciphertext</td><td>Sealed box to the election public key</td><td>No homomorphic tally needed</td></tr>
+      <tr><td>Outer envelope: qualified signature (BDOC)</td><td>Ed25519 signature over election, agent, ciphertext hash, time</td><td></td></tr>
+      <tr><td>Registration receipt (OCSP + RFC 3161 timestamp)</td><td>Collector-signed receipt with ledger sequence and chain hash</td><td></td></tr>
+      <tr><td>Re-voting: latest vote counts</td><td>Same rule</td><td></td></tr>
+      <tr><td>Threshold key on smart cards</td><td>Shamir 2-of-3 over GF(2<sup>255</sup>−19)</td><td></td></tr>
+      <tr><td>Mix-net and zero-knowledge decryption proofs</td><td>Key published after the close; anyone re-decrypts</td><td>Ballots are secret until the close, then public, as PoL2 requires transparency</td></tr>
+      <tr><td>Auditor application</td><td>Audit from the exported record only</td><td></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<footer>
+  <span>MIT licence. Protocol structure after <a href="https://github.com/valimised/ivxv">valimised/ivxv</a>; no IVXV code is included.</span>
+  <span>Governance context: <a href="https://github.com/naturaldao/NaturalDAO">NaturalDAO / PoL2</a></span>
+</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl-fast.min.js"></script>
+<script>
+const RESULTS = /*__RESULTS__*/null;
+(() => {
+"use strict";
+// ---------------------------------------------------------------- utilities
+const $ = id => document.getElementById(id);
+const te = new TextEncoder(), td = new TextDecoder();
+const hex = b => Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+const unhex = h => new Uint8Array(h.match(/../g).map(x => parseInt(x, 16)));
+const short = h => h.slice(0, 10) + "…";
+const cat = (...a) => { const n = a.reduce((s, x) => s + x.length, 0), o = new Uint8Array(n); let i = 0; for (const x of a) { o.set(x, i); i += x.length; } return o; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function canon(v) {
+  if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
+  if (v && typeof v === "object") return "{" + Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}";
+  return JSON.stringify(v);
+}
+async function sha256(s) { const b = typeof s === "string" ? te.encode(s) : s; return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", b))); }
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+// ---------------------------------------------------------------- crypto
+// Sealed box: the libsodium construction (ephemeral X25519 key, nonce from a hash of
+// both public keys), with SHA-512 in place of BLAKE2b because tweetnacl ships SHA-512.
+function seal(msg, pk) {
+  const e = nacl.box.keyPair();
+  const nonce = nacl.hash(cat(e.publicKey, pk)).slice(0, 24);
+  return cat(e.publicKey, nacl.box(msg, nonce, pk, e.secretKey));
+}
+function unseal(ct, sk) {
+  const epk = ct.slice(0, 32), pk = nacl.box.keyPair.fromSecretKey(sk).publicKey;
+  const nonce = nacl.hash(cat(epk, pk)).slice(0, 24);
+  return nacl.box.open(ct.slice(32), nonce, epk, sk);
+}
+const P = (1n << 255n) - 19n;
+const mod = a => ((a % P) + P) % P;
+function mpow(b, e) { let r = 1n; b = mod(b); while (e > 0n) { if (e & 1n) r = r * b % P; b = b * b % P; e >>= 1n; } return r; }
+function rand255() { const b = nacl.randomBytes(32); return mod(BigInt("0x" + hex(b))); }
+function splitInt(s, k, n) { const c = [s]; for (let i = 1; i < k; i++) c.push(rand255()); const out = []; for (let x = 1n; x <= BigInt(n); x++) { let y = 0n; for (let i = c.length - 1; i >= 0; i--) y = mod(y * x + c[i]); out.push([x, y]); } return out; }
+function recoverInt(sh) { let s = 0n; for (let i = 0; i < sh.length; i++) { let num = 1n, den = 1n; for (let j = 0; j < sh.length; j++) if (i !== j) { num = mod(num * -sh[j][0]); den = mod(den * (sh[i][0] - sh[j][0])); } s = mod(s + sh[i][1] * num * mpow(den, P - 2n)); } return s; }
+function splitKey(sk, k, n) { const v = BigInt("0x" + hex(sk)), hi = v >> 128n, lo = v & ((1n << 128n) - 1n); const H = splitInt(hi, k, n), L = splitInt(lo, k, n); return H.map((h, i) => ({ x: h[0], hi: h[1], lo: L[i][1] })); }
+function recoverKey(shares) { const hi = recoverInt(shares.map(s => [s.x, s.hi])), lo = recoverInt(shares.map(s => [s.x, s.lo])); return unhex(((hi << 128n) | lo).toString(16).padStart(64, "0")); }
+
+// ---------------------------------------------------------------- protocol
+const CHOICES = ["advance", "hold"];
+const STAGES = ["proposed", "deliberation", "voting", "approved", "executed", "reviewed"];
+function signer(name) { const kp = nacl.sign.keyPair(); return { name, kp, id: hex(kp.publicKey) }; }
+const sign = (who, s) => hex(nacl.sign.detached(te.encode(s), who.kp.secretKey));
+const verify = (idHex, s, sig) => { try { return nacl.sign.detached.verify(te.encode(s), unhex(sig), unhex(idHex)); } catch { return false; } };
+
+class Ledger {
+  constructor() { this.entries = []; }
+  async add(kind, payload, note) {
+    const prev = this.entries.length ? this.entries[this.entries.length - 1].hash : "0".repeat(64);
+    const e = { seq: this.entries.length, kind, payload, prev };
+    e.hash = await sha256(canon({ seq: e.seq, kind, payload, prev }));
+    e.note = note; this.entries.push(e); return e;
+  }
+}
+function decideRule(counts, rule) {
+  const valid = counts.advance + counts.hold; if (!valid) return { decided: false, winner: null, why: "no valid ballots" };
+  const top = counts.advance >= counts.hold ? "advance" : "hold", n = counts[top];
+  if (counts.advance === counts.hold) return { decided: false, winner: null, why: "tie" };
+  const f = n / valid, ok = rule === "majority" ? f > .5 : rule === "supermajority" ? f >= 2 / 3 : n === valid;
+  return { decided: ok, winner: ok ? top : null, why: `${top} ${n}/${valid} under ${rule}` + (ok ? "" : ", threshold not reached") };
+}
+
+// One election. Returns a list of display steps plus the exported record.
+async function election(ctx) {
+  const { agents, organiser, custodians, mode, rule, rnd, eid, revote, prior, collector } = ctx;
+  const steps = [], L = new Ledger();
+  const S = (phase, say, sub, fx) => steps.push({ phase, say, sub, fx, ledgerLen: L.entries.length, round: rnd });
+  const cfg = { election_id: eid, question: "Advance the event to its next stage?", choices: CHOICES, rule, threshold: "2-of-3" };
+  await L.add("config", { config: cfg, sig: sign(organiser, canon(cfg)), organiser: organiser.id }, `rule=${rule}, choices=advance|hold`);
+  S("Setup", "The organiser signs the election configuration.", "Choices, decision rule and the 2-of-3 key threshold become the first ledger entry. Changing them later breaks the hash chain.", st => {});
+  const roster = agents.map(a => a.id).sort();
+  await L.add("roster", { agents: roster, sig: sign(organiser, canon(roster)) }, `${roster.length} eligible agents`);
+  S("Setup", "The roster of eligible agents is sealed.", "Only ballots signed by a key on this list will be accepted (IVXV: the signed voter list).", st => {});
+  const ek = nacl.box.keyPair(), shares = splitKey(ek.secretKey, 2, 3);
+  await L.add("key", { public_key: hex(ek.publicKey), k: 2, n: 3 }, `election key ${short(hex(ek.publicKey))}`);
+  S("Key ceremony", "An election key pair is generated and the private key is split among three custodians.", "Any two shares reconstruct it; one share reveals nothing. The whole private key is then discarded.", st => { st.key = { pk: hex(ek.publicKey), shares: custodians.map(c => ({ holder: c.name, used: false })) }; });
+  await L.add("open", {}, "voting period open");
+  S("Voting", "The ballot box opens.", mode === "open" ? "Open condition: each agent will see the running tally before it decides." : "Sealed condition: no agent sees any other ballot until the close.", st => {});
+
+  const envelopes = [], visible = [];
+  const castOne = async (a, choice, why, revoteNo) => {
+    const ballot = { election_id: eid, agent_id: a.id, choice, rationale: why, nonce: hex(nacl.randomBytes(8)) };
+    const sealed = seal(te.encode(canon(ballot)), ek.publicKey);
+    const sh = await sha256(sealed), t = Date.now();
+    const signed = canon({ election_id: eid, agent_id: a.id, sealed_sha256: sh, cast_at: t });
+    const env = { agent_id: a.id, sealed: hex(sealed), cast_at: t, sig: sign(a, signed) };
+    env.hash = await sha256(signed + env.sig);
+    const ok = roster.includes(a.id) && verify(a.id, signed, env.sig);
+    const e = await L.add("ballot", { agent_id: a.id, envelope_hash: env.hash, sealed_sha256: sh, revote_index: revoteNo }, `${a.name}: envelope ${short(env.hash)}${revoteNo ? " (re-vote)" : ""}`);
+    env.receipt = { seq: e.seq, hash: e.hash, collector_sig: sign(organiser, canon({ envelope_hash: env.hash, seq: e.seq })) };
+    envelopes.push(env); return { env, ok, ct: hex(sealed) };
+  };
+  for (const a of agents) {
+    const seen = mode === "open" ? visible.slice() : [];
+    const [choice, why] = a.decide({ seen, round: rnd, prior });
+    const r = await castOne(a, choice, why, 0);
+    visible.push(choice);
+    const tallySeen = seen.length ? `saw ${seen.filter(c => c === "advance").length} advance · ${seen.filter(c => c === "hold").length} hold` : "";
+    S("Voting", `${a.name} seals and signs its ballot.`, `The collector checks the signature against the roster, appends the envelope hash to the ledger and returns a signed receipt (ledger #${L.entries.length - 1}). The collector cannot read the ballot: ciphertext ${short(r.ct)}`,
+      st => { const s = st.agents[a.id]; s.status = "cast"; s.env = r.env.hash; s.saw = tallySeen; s.followed = /following/.test(why); st.active = a.id; });
+  }
+  if (revote && mode !== "consensus") {
+    const a = agents[agents.length - 1];
+    const why = "late evidence arrived after my first ballot; replacing it";
+    const newChoice = a.signal;
+    await castOne(a, newChoice, why, 1);
+    S("Voting", `${a.name} casts a second ballot.`, "Re-voting as in IVXV: both envelopes stay in the ledger, and only the latest one will be counted.", st => { st.agents[a.id].revoted = true; st.active = a.id; });
+  }
+  await L.add("close", { accepted: envelopes.length }, `${envelopes.length} envelopes accepted`);
+  S("Close", "The ballot box closes.", `${envelopes.length} envelopes from ${agents.length} agents. Nothing has been decrypted yet.`, st => { st.active = null; });
+
+  const used = [shares[0], shares[2]];
+  const sk = recoverKey(used);
+  const pkMatch = hex(nacl.box.keyPair.fromSecretKey(sk).publicKey) === hex(ek.publicKey);
+  S("Decrypt", `${custodians[0].name} and ${custodians[2].name} hand in their shares.`, "Two of three shares are enough. The reconstructed private key is checked against the published public key.", st => { st.key.shares[0].used = true; st.key.shares[2].used = true; st.key.recovered = pkMatch; });
+
+  const final = {}; for (const env of envelopes) final[env.agent_id] = env;
+  const valid = {}, invalid = {};
+  for (const [aid, env] of Object.entries(final)) {
+    const pt = unseal(unhex(env.sealed), sk);
+    if (!pt) { invalid[aid] = "undecryptable"; continue; }
+    const b = JSON.parse(td.decode(pt));
+    if (b.agent_id !== aid || !CHOICES.includes(b.choice)) { invalid[aid] = "invalid"; continue; }
+    valid[aid] = { choice: b.choice, rationale: b.rationale, nonce: b.nonce };
+  }
+  await L.add("decrypt", { published_private_key: hex(sk), valid, invalid }, "private key published; ballots decrypted");
+  S("Decrypt", "The key is published and every final envelope is opened.", "Choices and rationales become public with the agent's identity, so the decision chain can be traced. Earlier ballots from re-voting agents are not counted.",
+    st => { for (const [aid, v] of Object.entries(valid)) { const s = st.agents[aid]; s.status = "open"; s.choice = v.choice; s.why = v.rationale; } });
+
+  const counts = { advance: 0, hold: 0 }; for (const v of Object.values(valid)) counts[v.choice]++;
+  const dec = decideRule(counts, rule);
+  let tallyRec = { counts: { ...counts }, ...dec };
+  await L.add("tally", tallyRec, `advance ${counts.advance} · hold ${counts.hold} → ${dec.decided ? dec.winner : "no decision"}`);
+  S("Tally", dec.decided ? `Decision: ${dec.winner}.` : "No decision under this rule.", dec.why + ".", st => { st.tally = { counts, dec, rule }; });
+
+  // export, optionally tampered by a dishonest collector, then audited
+  let exLedger = JSON.parse(JSON.stringify(L.entries)), exEnv = JSON.parse(JSON.stringify(envelopes)), tamper = "";
+  if (collector === "tally") {
+    const t = exLedger.find(e => e.kind === "tally");
+    const flip = counts.advance >= counts.hold ? "hold" : "advance";
+    t.payload.counts = { advance: flip === "advance" ? agents.length : 0, hold: flip === "hold" ? agents.length : 0 };
+    t.payload.winner = flip; t.payload.decided = true; t.note = `advance ${t.payload.counts.advance} · hold ${t.payload.counts.hold} → ${flip} (altered)`;
+    let prev = "0".repeat(64); for (const e of exLedger) { e.prev = prev; e.hash = await sha256(canon({ seq: e.seq, kind: e.kind, payload: e.payload, prev })); prev = e.hash; }
+    tamper = "The collector rewrote the tally entry and re-hashed the whole chain so the chain itself still verifies.";
+  } else if (collector === "drop") {
+    const victim = exEnv.findIndex(e => valid[e.agent_id] && valid[e.agent_id].choice !== (counts.advance >= counts.hold ? "advance" : "hold"));
+    exEnv.splice(victim >= 0 ? victim : 0, 1);
+    tamper = "The collector withheld one envelope from the export.";
+  }
+  const checks = await audit(exLedger, exEnv, roster, organiser.id);
+  const pass = checks.every(c => c.ok);
+  for (const c of checks) S("Audit", c.ok ? `Audit: ${c.label}.` : `Audit fails: ${c.label}.`, c.detail, st => { st.checks.push(c); if (tamper) st.tamper = tamper; });
+  return { steps, counts, dec, pass, valid, ledger: L.entries, exLedger };
+}
+
+async function audit(led, envs, roster, orgId) {
+  const out = [];
+  let prev = "0".repeat(64), chain = true;
+  for (const e of led) { const h = await sha256(canon({ seq: e.seq, kind: e.kind, payload: e.payload, prev: e.prev })); if (e.prev !== prev || h !== e.hash) { chain = false; break; } prev = e.hash; }
+  out.push({ ok: chain, label: "hash chain intact", detail: `${led.length} entries; each entry commits to the hash of the one before.` });
+  const cfg = led.find(e => e.kind === "config"), ros = led.find(e => e.kind === "roster");
+  const sigs = verify(orgId, canon(cfg.payload.config), cfg.payload.sig) && verify(orgId, canon(ros.payload.agents), ros.payload.sig);
+  out.push({ ok: sigs, label: "configuration and roster signed by the organiser", detail: "Ed25519 signatures checked against the organiser's public key." });
+  const reg = new Map(led.filter(e => e.kind === "ballot").map(e => [e.payload.envelope_hash, e]));
+  let envOk = envs.length === reg.size;
+  for (const env of envs) {
+    const r = reg.get(env.hash), signed = canon({ election_id: cfg.payload.config.election_id, agent_id: env.agent_id, sealed_sha256: await sha256(unhex(env.sealed)), cast_at: env.cast_at });
+    if (!r || !roster.includes(env.agent_id) || !verify(env.agent_id, signed, env.sig) || r.payload.sealed_sha256 !== await sha256(unhex(env.sealed))) envOk = false;
+  }
+  out.push({ ok: envOk, label: "every registered envelope exported, eligible and correctly signed", detail: `${envs.length} envelopes exported, ${reg.size} registered in the ledger.` });
+  const final = {}; for (const env of envs.slice().sort((a, b) => reg.get(a.hash)?.seq - reg.get(b.hash)?.seq)) final[env.agent_id] = env;
+  const dec = led.find(e => e.kind === "decrypt").payload, key = led.find(e => e.kind === "key").payload;
+  const sk = unhex(dec.published_private_key);
+  const keyOk = hex(nacl.box.keyPair.fromSecretKey(sk).publicKey) === key.public_key;
+  out.push({ ok: keyOk, label: "published private key matches the election public key", detail: "Anyone can now re-decrypt every ballot." });
+  const re = {}; let decOk = true;
+  for (const [aid, env] of Object.entries(final)) { const pt = unseal(unhex(env.sealed), sk); if (!pt) continue; const b = JSON.parse(td.decode(pt)); re[aid] = b.choice; if (!dec.valid[aid] || dec.valid[aid].choice !== b.choice) decOk = false; }
+  if (Object.keys(dec.valid).length !== Object.keys(re).length) decOk = false;
+  out.push({ ok: decOk, label: "re-decryption matches the published ballots", detail: `${Object.keys(re).length} final ballots re-decrypted by the auditor; re-vote rule applied (latest counts).` });
+  const counts = { advance: 0, hold: 0 }; for (const c of Object.values(re)) counts[c]++;
+  const t = led.find(e => e.kind === "tally").payload;
+  const tOk = t.counts.advance === counts.advance && t.counts.hold === counts.hold;
+  out.push({ ok: tOk, label: "tally matches the ballots", detail: `Ledger says advance ${t.counts.advance} · hold ${t.counts.hold}; recomputed advance ${counts.advance} · hold ${counts.hold}.` });
+  const d = decideRule(counts, cfg.payload.config.rule);
+  out.push({ ok: tOk && d.decided === t.decided && d.winner === t.winner, label: "decision rule applied correctly", detail: d.why + "." });
+  return out;
+}
+
+// ---------------------------------------------------------------- agents
+function makeAgents(n, p, seed, mode, stubborn) {
+  const R = rng(seed);
+  const list = [];
+  for (let i = 0; i < n; i++) {
+    const a = signer(`agent-${i + 1}`);
+    a.signal = R() < p ? "advance" : "hold"; a.stubborn = mode === "consensus" && i >= n - stubborn; a.round1 = null;
+    a.decide = ({ seen, round, prior }) => {
+      if (mode === "open" && seen.length) {
+        const A = seen.filter(c => c === "advance").length, H = seen.length - A, top = A > H ? "advance" : "hold";
+        if (Math.abs(A - H) >= 2 && top !== a.signal) return [top, `private signal said ${a.signal}, but ${Math.max(A, H)} visible votes favour ${top}; following the majority`];
+        return [a.signal, `private signal suggests ${a.signal}; no decisive visible majority`];
+      }
+      if (mode === "consensus" && round > 1) {
+        if (a.stubborn) return [a.signal, `round ${round}: keeping my private signal ${a.signal} regardless of the record`];
+        if (!a.round1) a.round1 = prior.map(x => x.choice);
+        const A = a.round1.filter(c => c === "advance").length, H = a.round1.length - A;
+        if (A === H) return [a.signal, `round ${round}: round-1 evidence is tied; keeping ${a.signal}`];
+        const top = A > H ? "advance" : "hold";
+        return top === a.signal ? [top, `round ${round}: round-1 record (${Math.max(A, H)}/${A + H}) agrees with my signal`] : [top, `round ${round}: my signal said ${a.signal}, but ${Math.max(A, H)}/${A + H} independent round-1 signals favour ${top}; updating`];
+      }
+      return [a.signal, `${mode === "consensus" ? "round 1: " : ""}private signal suggests ${a.signal}`];
+    };
+    list.push(a);
+  }
+  return list;
+}
+
+// ---------------------------------------------------------------- run builder
+let RUN = null, IDX = 0, TIMER = null, BUILD = 0;
+function settings() {
+  const mode = document.querySelector("#modeTabs [aria-pressed=true]").dataset.mode;
+  const clamp = (v, a, b, d) => Number.isFinite(v) ? Math.min(b, Math.max(a, v)) : d;
+  return {
+    mode, n: clamp(parseInt($("nAgents").value), 3, 15, 7), p: clamp(parseFloat($("pAcc").value), .5, 1, .7),
+    rule: mode === "consensus" ? "unanimous" : $("rule").value, seed: parseInt($("seed").value) || 1,
+    stubborn: clamp(parseInt($("stubborn").value), 0, 4, 0), collector: $("collector").value, revote: $("revote").checked,
+  };
+}
+async function build() {
+  const my = ++BUILD; stop();
+  const s = settings();
+  $("ruleField").hidden = s.mode === "consensus"; $("stubField").hidden = s.mode !== "consensus"; $("revoteField").hidden = s.mode === "consensus";
+  $("say").innerHTML = "Generating keys and running the protocol…";
+  const organiser = signer("organiser");
+  const agents = makeAgents(s.n, s.p, s.seed, s.mode, Math.min(s.stubborn, s.n - 1));
+  const custodians = [organiser, agents[0], agents[1]];
+  const steps = []; const rounds = [];
+  let prior = [], stageIdx = 0, last;
+  const maxR = s.mode === "consensus" ? 5 : 1;
+  for (let r = 1; r <= maxR; r++) {
+    const res = await election({ agents, organiser, custodians, mode: s.mode, rule: s.rule, rnd: r, eid: `EV-1:proposed->deliberation:${r}`, revote: s.revote, prior, collector: s.collector });
+    if (my !== BUILD) return;
+    if (r > 1) steps.push({ real: res.ledger, ledger: res.exLedger, phase: "Setup", round: r, ledgerLen: 0, say: `Round ${r}: every agent has read the full round-${r - 1} record.`, sub: "Each round is a fresh sealed election. Agents decide privately again, now with all published round-1 ballots and rationales as evidence.", fx: st => resetRound(st, agents) });
+    steps.push(...res.steps.map(x => ({ ...x, ledger: res.exLedger, real: res.ledger })));
+    rounds.push({ r, counts: res.counts, dec: res.dec, pass: res.pass });
+    last = res;
+    prior = Object.entries(res.valid).map(([aid, v]) => ({ agent: aid, choice: v.choice }));
+    if (s.mode !== "consensus" || res.dec.decided) break;
+  }
+  const advanced = last.dec.decided && last.dec.winner === "advance" && last.pass;
+  steps.push({ phase: "Audit", round: rounds.length, say: advanced ? "The event advances: proposed → deliberation." : last.pass ? "The event stays at its current stage." : "The audit failed, so the event does not advance.",
+    sub: advanced ? "The transition record stores the complete ledger and envelopes, so anyone can re-run the audit later." : last.pass ? (s.mode === "consensus" ? `No unanimity after ${rounds.length} rounds. The disagreement and every rationale stay on the record.` : "The decision rule was not met, or the agents chose to hold.") : "A decision is only executed when the independent audit passes.",
+    fx: st => { st.final = { advanced, rounds: rounds.length }; }, ledger: last.exLedger, real: last.ledger });
+  RUN = { s, agents, steps, rounds, custodians };
+  IDX = steps.length - 1; render();
+}
+function resetRound(st, agents) { for (const a of agents) { const x = st.agents[a.id]; x.prevChoice = x.choice; x.status = "idle"; x.env = null; x.saw = ""; x.revoted = false; } st.key = null; st.tally = null; st.checks = []; st.tamper = ""; }
+
+// ---------------------------------------------------------------- rendering
+const PHASES = ["Setup", "Key ceremony", "Voting", "Close", "Decrypt", "Tally", "Audit"];
+function initialState() {
+  const st = { agents: {}, key: null, tally: null, checks: [], active: null, final: null, tamper: "" };
+  for (const a of RUN.agents) st.agents[a.id] = { status: "idle", choice: null, why: "", env: null, saw: "", revoted: false, prevChoice: null, signal: a.signal, stubborn: a.stubborn };
+  return st;
+}
+function stateAt(i) { const st = initialState(); for (let k = 0; k <= i && k < RUN.steps.length; k++) RUN.steps[k].fx(st); return st; }
+const envSvg = (state) => {
+  const c = state === "open" ? "var(--pass)" : "var(--sealed)";
+  return `<svg class="env" viewBox="0 0 26 18" aria-hidden="true"><rect x="1" y="1" width="24" height="16" rx="2" fill="var(--surface)" stroke="${c}" stroke-width="1.5"/>${state === "open" ? `<path d="M1 3 L13 1 L25 3" fill="none" stroke="${c}" stroke-width="1.5"/>` : `<path d="M1 2 L13 10 L25 2" fill="none" stroke="${c}" stroke-width="1.5"/><circle cx="13" cy="10" r="2.6" fill="${c}"/>`}</svg>`;
+};
+function render() {
+  if (!RUN) return;
+  const step = RUN.steps[IDX], st = stateAt(IDX), s = RUN.s;
+  // phase rail
+  const pi = PHASES.indexOf(step.phase);
+  $("rail").innerHTML = PHASES.map((p, i) => `<span class="${i < pi ? "done" : i === pi ? "now" : ""}">${p}</span>`).join("");
+  $("say").innerHTML = `${esc(step.say)}<small>${esc(step.sub || "")}</small>`;
+  // rounds
+  $("rounds").innerHTML = s.mode === "consensus" ? RUN.rounds.filter(r => r.r <= step.round).map(r => {
+    const shown = r.r < step.round || (r.r === step.round && st.tally);
+    return `<span class="${shown && r.dec.decided ? "ok" : ""}">Round ${r.r}${shown ? ` · ${r.counts.advance}–${r.counts.hold}` : " · voting"}</span>`;
+  }).join("") : "";
+  // agents
+  $("agents").innerHTML = RUN.agents.map(a => {
+    const x = st.agents[a.id], active = st.active === a.id;
+    const status = x.status === "idle" ? `<span class="chip">waiting</span>` : x.status === "cast" ? `<span class="chip sealed">sealed${x.revoted ? " · re-voted" : ""}</span>` : `<span class="chip ${x.choice === "advance" ? "adv" : "hold"}">ballot: ${x.choice}</span>`;
+    const changed = x.status === "open" && x.prevChoice && x.prevChoice !== x.choice ? ` <span class="chip open">changed mind</span>` : "";
+    return `<div class="agent${active ? " active" : ""}"><div class="nm"><span>${a.name}${x.stubborn ? ' <span class="chip">stubborn</span>' : ""}</span>${x.status === "idle" ? "" : envSvg(x.status === "open" ? "open" : "sealed")}</div>
+      <span class="id">key ${a.id.slice(0, 12)}…</span>
+      <span class="chip ${x.signal === "advance" ? "adv" : "hold"}" title="Private evidence given to this agent">signal: ${x.signal}</span>
+      ${status}${changed}
+      ${x.saw ? `<span class="saw">${x.saw}${x.followed ? " → followed" : ""}</span>` : ""}
+      ${x.status === "open" ? `<span class="why">${esc(x.why)}</span>` : ""}</div>`;
+  }).join("");
+  // ledger: show the real ledger up to this step; at audit steps show the exported (possibly altered) one
+  const showEx = step.phase === "Audit" && s.collector !== "honest";
+  const led = (showEx ? step.ledger : step.real).slice(0, showEx ? step.ledger.length : step.ledgerLen);
+  $("ledger").innerHTML = led.length ? led.map((e, i) => `<div class="entry${i === led.length - 1 && !showEx ? " new" : ""}${showEx && /altered/.test(e.note || "") ? " bad" : ""}"><span class="muted">#${e.seq}</span><span class="k">${e.kind}</span><span class="h">${short(e.hash)} ← ${short(e.prev)}</span><span class="d">${esc(e.note || "")}</span></div>`).join("") : `<p class="muted" style="font-family:var(--f-body)">The ledger is empty until the organiser signs the configuration.</p>`;
+  $("ledger").scrollTop = $("ledger").scrollHeight;
+  $("ledgerHead").textContent = showEx ? "exported copy given to the auditor" : `${led.length} entries`;
+  // key
+  $("keyInfo").innerHTML = st.key ? `<dt>public</dt><dd class="mono">${short(st.key.pk)}</dd><dt>threshold</dt><dd>2 of 3 shares</dd><dt>private</dt><dd>${st.key.recovered === undefined ? "split; whole key discarded" : st.key.recovered ? '<span style="color:var(--pass)">reconstructed, matches public key</span>' : '<span style="color:var(--fail)">mismatch</span>'}</dd>` : `<dt>status</dt><dd class="muted">not generated yet</dd>`;
+  $("shares").innerHTML = st.key ? st.key.shares.map((sh, i) => `<div class="share${sh.used ? " used" : ""}"><span>Share ${i + 1} · ${sh.holder}</span><span class="muted" style="font-size:12px">${sh.used ? "handed in" : "held"}</span></div>`).join("") : "";
+  // tally
+  const n = RUN.agents.length;
+  const thr = s.rule === "majority" ? .5 : s.rule === "supermajority" ? 2 / 3 : 1;
+  $("ruleNote").textContent = `rule: ${s.rule}`;
+  const [ba, bh] = $("bar").querySelectorAll("div");
+  if (st.tally) { const c = st.tally.counts, v = c.advance + c.hold || 1; ba.style.width = c.advance / v * 100 + "%"; bh.style.width = c.hold / v * 100 + "%"; ba.textContent = c.advance ? `advance ${c.advance}` : ""; bh.textContent = c.hold ? `hold ${c.hold}` : ""; }
+  else { ba.style.width = bh.style.width = "0"; ba.textContent = bh.textContent = ""; }
+  $("thr").style.left = `calc(${thr * 100}% - 1px)`;
+  $("thr").title = `threshold for advance: ${s.rule}`;
+  let v = `<span class="badge wait">Waiting for the close</span>`;
+  if (st.final) v = st.final.advanced ? `<span class="badge go">Event advances</span>` : `<span class="badge stop">Event does not advance</span>`;
+  else if (st.tally) v = st.tally.dec.decided ? `<span class="badge ${st.tally.dec.winner === "advance" ? "go" : "stop"}">Decision: ${st.tally.dec.winner}</span><span class="muted">pending audit</span>` : `<span class="badge stop">No decision</span><span class="muted">${esc(st.tally.dec.why)}</span>`;
+  $("verdict").innerHTML = v;
+  const cur = st.final && st.final.advanced ? 1 : 0;
+  $("track").innerHTML = STAGES.map((x, i) => `<span class="${i === cur ? "cur" : ""}">${x}</span>`).join("");
+  // audit
+  const pending = 6 - st.checks.length;
+  $("checks").innerHTML = (st.tamper ? `<li><span class="no">!</span><span>${esc(st.tamper)}</span></li>` : "") + st.checks.map(c => `<li><span class="${c.ok ? "ok" : "no"}">${c.ok ? "✓" : "✗"}</span><span><strong>${esc(c.label)}</strong><br><span class="muted">${esc(c.detail)}</span></span></li>`).join("") +
+    (pending > 0 ? Array.from({ length: pending }, () => `<li><span class="pend">○</span><span class="muted">pending</span></li>`).join("") : "");
+  $("btnStep").disabled = IDX >= RUN.steps.length - 1;
+  $("btnPlay").textContent = TIMER ? "Pause" : IDX >= RUN.steps.length - 1 ? "Replay" : "Play";
+}
+function stop() { if (TIMER) { clearInterval(TIMER); TIMER = null; } }
+function next() { if (!RUN) return; if (IDX < RUN.steps.length - 1) { IDX++; render(); } else { stop(); render(); } }
+$("btnStep").onclick = () => { stop(); next(); };
+$("btnPlay").onclick = () => {
+  if (TIMER) { stop(); render(); return; }
+  if (IDX >= RUN.steps.length - 1) IDX = 0;
+  TIMER = setInterval(next, matchMedia("(prefers-reduced-motion: reduce)").matches ? 1400 : 1100); render();
+};
+$("btnReset").onclick = () => { $("seed").value = (parseInt($("seed").value) || 0) + 1; build(); };
+document.querySelectorAll("#modeTabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#modeTabs button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  if (b.dataset.mode === "consensus" && +$("stubborn").value === 0 && !b.dataset.touched) { b.dataset.touched = 1; }
+  build();
+});
+["nAgents", "pAcc", "rule", "seed", "stubborn", "collector", "revote"].forEach(id => $(id).addEventListener("change", build));
+
+// ---------------------------------------------------------------- results charts
+function svgEl(w, h, body) { return `<svg viewBox="0 0 ${w} ${h}" role="img">${body}</svg>`; }
+function chartHeadline(d) {
+  const W = 340, H = 240, l = 40, b = 200, top = 58, ph = b - top;
+  const Y = v => b - v * ph;
+  let s = `<text class="t" x="0" y="16">Collective accuracy, ${d[0].trials.toLocaleString()} trials each</text><text x="0" y="32">N=${d[0].n}, p=${d[0].p}, full protocol with audit</text>`;
+  for (const g of [0, .25, .5, .75, 1]) s += `<line x1="${l}" x2="${W}" y1="${Y(g)}" y2="${Y(g)}" stroke="var(--line)"/><text x="${l - 6}" y="${Y(g) + 4}" text-anchor="end">${g.toFixed(2)}</text>`;
+  d.forEach((r, i) => {
+    const x = l + 40 + i * 140, c = r.condition === "sealed" ? "var(--sealed)" : "var(--open)";
+    s += `<rect x="${x}" y="${Y(r.accuracy)}" width="80" height="${b - Y(r.accuracy)}" rx="4" fill="${c}"><title>${r.condition}: ${r.accuracy.toFixed(4)} (95% CI ${r.ci95[0].toFixed(4)}–${r.ci95[1].toFixed(4)}); ${(r.conformity_rate * 100).toFixed(1)}% of agents overrode their own signal</title></rect>`;
+    s += `<text x="${x + 40}" y="${Y(r.accuracy) - 6}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${r.accuracy.toFixed(3)}</text><text x="${x + 40}" y="${b + 16}" text-anchor="middle">${r.condition}</text>`;
+    s += `<text x="${x + 40}" y="${b + 31}" text-anchor="middle" style="fill:var(--ink-3)">${(r.conformity_rate * 100).toFixed(1)}% conformed</text>`;
+  });
+  return svgEl(W, H, s);
+}
+function chartSweep(rows) {
+  const W = 340, H = 240, l = 40, r0 = 56, b = 200, top = 52, ph = b - top;
+  const xs = [...new Set(rows.map(r => r.n))].sort((a, c) => a - c), x0 = xs[0], x1 = xs[xs.length - 1];
+  const X = v => l + (v - x0) / (x1 - x0) * (W - l - r0), Y = v => b - (v - .7) / .3 * ph;
+  let s = `<text class="t" x="0" y="16">Accuracy as agents are added</text><text x="0" y="32">p=${rows[0].p}, ${rows[0].trials.toLocaleString()} trials per point</text>`;
+  for (const g of [.7, .8, .9, 1]) s += `<line x1="${l}" x2="${W - r0}" y1="${Y(g)}" y2="${Y(g)}" stroke="var(--line)"/><text x="${l - 6}" y="${Y(g) + 4}" text-anchor="end">${g.toFixed(1)}</text>`;
+  for (const v of xs) s += `<text x="${X(v)}" y="${b + 16}" text-anchor="middle">${v}</text>`;
+  s += `<text x="${(l + W - r0) / 2}" y="${b + 32}" text-anchor="middle">number of agents</text>`;
+  for (const [cond, c] of [["sealed", "var(--sealed)"], ["open", "var(--open)"]]) {
+    const rs = rows.filter(r => r.condition === cond).sort((a, q) => a.n - q.n);
+    s += `<polyline fill="none" stroke="${c}" stroke-width="2" points="${rs.map(r => `${X(r.n)},${Y(r.accuracy)}`).join(" ")}"/>`;
+    for (const r of rs) s += `<circle cx="${X(r.n)}" cy="${Y(r.accuracy)}" r="4" fill="${c}" stroke="var(--surface)" stroke-width="2"><title>${cond}, N=${r.n}: ${r.accuracy.toFixed(3)}</title></circle>`;
+    const e = rs[rs.length - 1]; s += `<text x="${X(e.n) + 8}" y="${Y(e.accuracy) + 4}" style="fill:${c};font-weight:600">${cond}</text>`;
+  }
+  return svgEl(W, H, s);
+}
+function chartConsensus(rows) {
+  const W = 340, H = 240, l = 40, b = 200, top = 58, ph = b - top, bw = 40;
+  const Y = v => b - v * ph;
+  let s = `<text class="t" x="0" y="16">Unanimity reached in ≤5 sealed rounds</text><text x="0" y="32">N=${rows[0].n}, p=${rows[0].p}, ${rows[0].trials.toLocaleString()} trials per bar</text>`;
+  for (const g of [0, .5, 1]) s += `<line x1="${l}" x2="${W}" y1="${Y(g)}" y2="${Y(g)}" stroke="var(--line)"/><text x="${l - 6}" y="${Y(g) + 4}" text-anchor="end">${g.toFixed(1)}</text>`;
+  rows.forEach((r, i) => {
+    const x = l + 14 + i * 58;
+    s += `<rect x="${x}" y="${Y(r.reached)}" width="${bw}" height="${b - Y(r.reached)}" rx="4" fill="var(--sealed)"><title>${r.stubborn} stubborn: consensus in ${(r.reached * 100).toFixed(1)}% of events; mean ${r.mean_rounds.toFixed(2)} rounds${r.correct_given_reached != null ? `; consensus correct ${(r.correct_given_reached * 100).toFixed(1)}%` : ""}</title></rect>`;
+    s += `<text x="${x + bw / 2}" y="${Y(r.reached) - 6}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${r.reached.toFixed(2)}</text><text x="${x + bw / 2}" y="${b + 16}" text-anchor="middle">${r.stubborn}</text>`;
+  });
+  s += `<text x="${(l + W) / 2}" y="${b + 32}" text-anchor="middle">agents that never update</text>`;
+  return svgEl(W, H, s);
+}
+if (RESULTS) {
+  if (RESULTS.headline) $("chHeadline").innerHTML = chartHeadline(RESULTS.headline);
+  if (RESULTS.sweep) $("chSweepN").innerHTML = chartSweep(RESULTS.sweep.by_n);
+  if (RESULTS.consensus) $("chConsensus").innerHTML = chartConsensus(RESULTS.consensus);
+} else { $("results").hidden = true; }
+
+if (typeof nacl === "undefined") { $("say").textContent = "The cryptography library did not load, so the live demo cannot run. The results below are still available."; }
+else build().then(() => { /* start in a readable state: through the first ballots */ });
+})();
+</script>

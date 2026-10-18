@@ -108,6 +108,7 @@ def run_transition_ballot(
     eap: Optional[EAPChecker] = None,
     sealed: bool = True,
     revote_hook: Optional[Callable[[Agent, Proposal, dict], Optional[Tuple[str, str]]]] = None,
+    extra_context: Optional[dict] = None,
 ) -> BallotRun:
     """Run one sealed ballot deciding whether `event` advances a stage.
 
@@ -153,7 +154,7 @@ def run_transition_ballot(
         election.close()
     else:
         for agent in agents:
-            ctx = {"visible_votes": [] if sealed else list(visible), "stage": event.stage}
+            ctx = {"visible_votes": [] if sealed else list(visible), "stage": event.stage, **(extra_context or {})}
             choice, rationale = agent.decide(proposal, ctx)
             b = Ballot(cfg.election_id, agent.identity.agent_id, choice, rationale)
             env = Envelope.cast(agent.identity, b, election.public_key)

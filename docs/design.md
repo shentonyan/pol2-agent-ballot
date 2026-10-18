@@ -35,8 +35,9 @@ deliberation that ends in consensus (EAP 5.3.3: "辅助所有重要决策的相�
 完全同意"), is a design question the manuscript leaves open. This repo
 treats voting as one admissible mechanism and supports a `unanimous` rule so
 that consensus-style decisions can be recorded with the same audit trail.
-**★ Open: confirm with the PoL2 editors which decision rule(s) the
-governance protocol should name.**
+Open question for the PoL2 editors: which decision rule the governance
+protocol should name. §7 shows that consensus can be run on the same
+protocol.
 
 ## 3. Component mapping
 
@@ -124,7 +125,27 @@ config and roster (IVXV answers this with a PKI and multi-party trust root);
 collusion of k custodians to decrypt early (same as IVXV with k smart
 cards); denial of service; the quality of the agents' judgement itself.
 
-## 7. What a real deployment would add
+## 7. Consensus on the same protocol
+
+EAP 5.3.3 asks PAI to help all parties to an important decision reach full
+agreement. `consensus.run_consensus` implements this with the sealed ballot
+as the only primitive:
+
+1. each round is a complete election (own key ceremony, ledger, audit);
+2. at the close of a round every choice and rationale is disclosed;
+3. the next round gives agents that record as context, then seals again;
+4. stop when the rule (default `unanimous`) is met or after `max_rounds`.
+
+This differs from the open sequential condition in one respect that matters:
+agents see the *complete* previous round only after committing their own
+ballot, never a partial ordered tally. Each round therefore aggregates all
+private evidence at once, which is the Delphi structure (Dalkey & Helmer,
+1963). With `DeliberativeAgent`s that weigh round-1 ballots as independent
+evidence, unanimity is reached in two rounds and is as accurate as the sealed
+majority; agents that never update block consensus and leave the event where
+it is, with the disagreement recorded. See experiment 2 in the README.
+
+## 8. What a real deployment would add
 
 * Organiser key held by the PoL-Governance maintainers' multisig or an
   on-chain registry (natural fit with the ERC-8183 / 8350 family).

@@ -9,13 +9,14 @@ It does **not** reproduce IVXV's mix-net or zero-knowledge shuffle proofs;
 see docs/design.md for exactly what is and is not implemented.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .identity import AgentIdentity, AgentRegistry
 from .election import Election, ElectionConfig, Stage
 from .ballot import Ballot, Envelope
 from .tally import TallyResult
 from .verify import Auditor, AuditReport
+from .consensus import ConsensusResult, run_consensus
 
 __all__ = [
     "AgentIdentity",
@@ -28,4 +29,6 @@ __all__ = [
     "TallyResult",
     "Auditor",
     "AuditReport",
+    "ConsensusResult",
+    "run_consensus",
 ]

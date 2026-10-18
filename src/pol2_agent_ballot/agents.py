@@ -119,3 +119,44 @@ class LLMAgent:
         except Exception:
             return "", f"unparseable model output: {raw[:200]!r}"
         return choice, rationale
+
+
+@dataclass
+class DeliberativeAgent(ScriptedAgent):
+    """Agent for multi-round consensus (consensus.py).
+
+    Round 1: votes its private signal, like ScriptedAgent.
+    Later rounds: treats every round-1 ballot as an independent signal of the
+    same accuracy and votes for the posterior majority (ties keep its own
+    signal). Only round-1 ballots are counted as evidence: later ballots are
+    already conditioned on round 1 and would double-count it.
+
+    `stubborn=True` never updates; used to show a deliberation that fails to
+    reach unanimity and leaves the event where it is.
+    """
+
+    stubborn: bool = False
+    _signal: Optional[str] = None
+    _round1: Optional[List[str]] = None
+
+    def decide(self, proposal: Proposal, context: dict) -> Tuple[str, str]:
+        rnd = context.get("round", 1)
+        if self._signal is None:
+            self._signal = self.private_signal(proposal)
+        if rnd == 1 or self.stubborn:
+            if rnd > 1:
+                return self._signal, f"round {rnd}: keeping my private signal {self._signal!r} regardless of the record"
+            return self._signal, f"round 1: private signal suggests {self._signal!r}"
+        prior = context.get("prior_round", [])
+        if self._round1 is None:
+            self._round1 = [d["choice"] for d in prior]
+        counts: Dict[str, int] = {}
+        for c in self._round1:
+            counts[c] = counts.get(c, 0) + 1
+        ranked = sorted(counts.items(), key=lambda kv: -kv[1])
+        if not ranked or (len(ranked) > 1 and ranked[0][1] == ranked[1][1]):
+            return self._signal, f"round {rnd}: round-1 evidence is tied; keeping my signal {self._signal!r}"
+        top, n = ranked[0]
+        if top == self._signal:
+            return top, f"round {rnd}: round-1 record ({n}/{len(self._round1)} for {top!r}) agrees with my signal"
+        return top, f"round {rnd}: my signal said {self._signal!r}, but {n}/{len(self._round1)} independent round-1 signals favour {top!r}; updating"
