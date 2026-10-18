@@ -41,9 +41,9 @@
 
 ## 实验
 
-两个实验均使用脚本 Agent，其私有证据正确的概率为 *p*。实验说明的是协议**防范什么**，
-不代表语言模型 Agent 或人类的实际行为。针对语言模型的预注册实验方案见
-[experiments/llm_herding_protocol.md](experiments/llm_herding_protocol.md)，尚未运行。
+实验一、二使用脚本 Agent，其私有证据正确的概率为 *p*，说明的是协议**防范什么**，
+不代表语言模型 Agent 或人类的实际行为。实验三用语言模型 Agent 检验这一点，方案见
+[experiments/llm_herding_protocol.md](experiments/llm_herding_protocol.md)。
 区间均为 Wilson 95%。
 
 ### 实验一：密封投票与公开顺序投票
