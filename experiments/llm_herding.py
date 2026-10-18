@@ -18,6 +18,9 @@ Environment for --backend openai:
   LLM_API_KEY    optional; never written to disk
   LLM_MODEL      e.g. qwen2.5:7b-instruct
 
+Claude through Anthropic's OpenAI-compatible endpoint:
+  LLM_BASE_URL=https://api.anthropic.com/v1  LLM_API_KEY=<your key>  LLM_MODEL=claude-haiku-5-5
+
 Examples:
   python experiments/llm_herding.py --backend mock --proposals 40
   $env:LLM_MODEL="qwen2.5:7b-instruct"; python experiments/llm_herding.py --backend openai --proposals 40
@@ -106,6 +109,11 @@ def preflight(base: str, model: str, key: str) -> None:
         req = urllib.request.Request(root + "/models", headers={"Authorization": f"Bearer {key}"} if key else {})
         with opener.open(req, timeout=10) as r:
             models = [m.get("id") for m in json.loads(r.read()).get("data", [])]
+    except urllib.error.HTTPError as e:
+        # some providers (e.g. Anthropic's OpenAI-compatible layer) do not serve
+        # /models with bearer auth; the test request below is the real check
+        print(f"  /models not available ({e.code}); skipping the model list", flush=True)
+        models = []
     except urllib.error.URLError as e:
         reason = getattr(e, "reason", e)
         hint = "Start the server first (for Ollama: run `ollama serve`, or open the Ollama app)." if "localhost" in root or "127.0.0.1" in root else "Check LLM_BASE_URL, the network and any proxy."
@@ -116,7 +124,7 @@ def preflight(base: str, model: str, key: str) -> None:
         listed = "\n  ".join(models) or "(none)"
         sys.exit(f"model '{model}' is not available on this server. Available:\n  {listed}\n"
                  f"Set $env:LLM_MODEL to one of these, or for Ollama run: ollama pull {model}")
-    print(f"model '{model}' found; sending one test request (the first call may take a while to load the model) ...", flush=True)
+    print(f"{'model ' + repr(model) + ' found; ' if models else ''}sending one test request (the first call may take a while to load the model) ...", flush=True)
     t0 = time.time()
     try:
         out = _post(opener, root + "/chat/completions",
