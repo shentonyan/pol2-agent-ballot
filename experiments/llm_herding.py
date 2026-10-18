@@ -104,6 +104,8 @@ def preflight(base: str, model: str, key: str) -> None:
     """Fail fast with an actionable message instead of hanging silently."""
     opener = _opener(base)
     root = base.rstrip("/")
+    if "anthropic.com" in root and key and not key.startswith("sk-ant-api"):
+        print("  warning: Claude API keys start with 'sk-ant-api'; this key looks like a different kind of token", flush=True)
     print(f"checking {root} ...", flush=True)
     try:
         req = urllib.request.Request(root + "/models", headers={"Authorization": f"Bearer {key}"} if key else {})
@@ -130,6 +132,9 @@ def preflight(base: str, model: str, key: str) -> None:
         out = _post(opener, root + "/chat/completions",
                     {"model": model, "temperature": 0, "messages": [{"role": "user", "content": 'Reply with {"ok": true}'}]}, key, timeout=300)
         text = out["choices"][0]["message"]["content"]
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")[:500]
+        sys.exit(f"test request failed: HTTP {e.code}\n{body}")
     except Exception as e:
         sys.exit(f"test request failed: {e}")
     print(f"test request answered in {time.time() - t0:.1f}s: {text.strip()[:60]!r}", flush=True)
