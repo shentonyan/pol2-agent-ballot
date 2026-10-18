@@ -36,7 +36,8 @@ anonymity. Sealing during voting is what keeps agents' votes independent —
 pip install -e .            # needs Python ≥ 3.10; pulls PyNaCl
 python examples/run_demo.py
 python -m pytest -q
-python experiments/sealed_vs_open.py --trials 300
+python experiments/sealed_vs_open.py --trials 30000 --sweep --plot   # ~8 min; PNGs in experiments/figures/
+python experiments/make_report.py                                    # interactive HTML report
 ```
 
 Demo output (5 scripted agents, one re-vote, one human 质询, full audit):
@@ -56,13 +57,23 @@ Audit: PASS
   ✓ decision rule majority correctly applied -> 'advance'
 ```
 
-Experiment (9 conformist agents, private accuracy 0.7, 300 trials):
+Experiment (9 conformist agents, private accuracy 0.7, **30,000 trials per
+condition through the full protocol**, every trial audited):
 
-```
-condition   P(correct collective decision)
-sealed                               0.937
-open                                 0.820
-```
+| condition | P(correct) | Wilson 95% CI | agents overriding own signal |
+|---|---|---|---|
+| sealed | 0.903 | 0.900–0.907 | 0.0% |
+| open | 0.843 | 0.839–0.847 | 22.6% |
+
+![headline](experiments/figures/headline.png)
+![sweep](experiments/figures/sweep.png)
+
+The sweep shows the Condorcet effect directly: under sealed ballots accuracy
+keeps rising with N (0.78 → 0.98 from 3 to 25 agents); under open voting it
+plateaus near 0.84, because once two early votes agree the rest follow them.
+Full numbers in `experiments/results/`, an interactive version in
+`experiments/figures/report.html`. (The 300-trial figure in the first commit
+was 0.937 vs 0.820 — within noise of these; the 30k run is the one to cite.)
 
 This is a simulation with scripted agents; it demonstrates the mechanism the
 protocol protects against, not how real LLM agents behave. A pre-registered
@@ -100,7 +111,7 @@ src/pol2_agent_ballot/
   agents.py     Scripted / Conformist / LLM agents
   event.py      stages, transitions, 质询 bookkeeping
 docs/           design.md (mapping + open questions), ivxv-notes.md
-experiments/    sealed_vs_open.py, llm_herding_protocol.md
+experiments/    sealed_vs_open.py (+ results/, figures/), make_report.py, llm_herding_protocol.md
 tests/          protocol + tamper tests
 ```
 
@@ -170,10 +181,11 @@ PoL2 到底希望 Agent 用投票还是用"相关方完全同意"的协商（EAP
 pip install -e .
 python examples/run_demo.py            # 5 个脚本 Agent，一次改票，一条人类质询，完整审计
 python -m pytest -q                    # 10 个测试，含 3 个篡改检测
-python experiments/sealed_vs_open.py   # 密封 vs 公开投票的级联实验
+python experiments/sealed_vs_open.py --trials 30000 --sweep --plot   # 级联实验，约 8 分钟，出 PNG 图
+python experiments/make_report.py                                    # 交互式 HTML 报告
 ```
 
-实验结果（9 个从众 Agent，私有信号准确率 0.7，300 次）：密封 0.937，公开 0.820。
+实验结果（9 个从众 Agent，私有信号准确率 0.7，每条件 **30,000 次**，全部走完整协议并审计）：密封 0.903，公开 0.843（Wilson 95% 区间互不重叠）；公开条件下 22.6% 的 Agent 放弃了自己的私有信号去跟随多数。参数扫描显示 Condorcet 效应：密封投票的准确率随 N 增加持续上升（3→25 个 Agent：0.78→0.98），公开投票则停在 0.84 左右。图见 `experiments/figures/`，交互报告 `experiments/figures/report.html`。
 这是脚本 Agent 的仿真，说明协议**防的是什么**，不代表真实 LLM Agent 的行为；
 针对 LLM 的预注册实验方案在 `experiments/llm_herding_protocol.md`，尚未运行。
 
