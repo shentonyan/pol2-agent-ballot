@@ -83,11 +83,11 @@ sequenceDiagram
     participant L as Collector ledger
     participant X as Auditor
     O->>L: signed configuration + signed roster
-    O->>C: election public key; private key split into shares, then discarded
+    O->>C: election public key, private key split into shares and discarded
     A->>A: decide (choice, rationale) from private evidence
     A->>L: envelope = Sign_agent(Seal_pk(ballot))
     L-->>A: receipt (ledger position, chain hash, collector signature)
-    Note over A,L: re-voting allowed; the latest envelope counts
+    Note over A,L: re-voting allowed, the latest envelope counts
     O->>L: close
     C->>L: two shares → private key, checked against public key, published
     L->>L: decrypt final envelopes, tally, apply rule
