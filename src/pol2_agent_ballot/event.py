@@ -154,7 +154,7 @@ def run_transition_ballot(
         election.close()
     else:
         for agent in agents:
-            ctx = {"visible_votes": [] if sealed else list(visible), "stage": event.stage, **(extra_context or {})}
+            ctx = {**(extra_context or {}), "visible_votes": [] if sealed else list(visible), "stage": event.stage}
             choice, rationale = agent.decide(proposal, ctx)
             b = Ballot(cfg.election_id, agent.identity.agent_id, choice, rationale)
             env = Envelope.cast(agent.identity, b, election.public_key)

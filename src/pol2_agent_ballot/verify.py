@@ -60,13 +60,58 @@ class Auditor:
 
     def __init__(self, log: List[dict], envelopes: List[dict]):
         self.log = log
-        self.envelopes = [Envelope.from_dict(e) for e in envelopes]
+        self.envelopes = envelopes
 
     def _entries(self, kind: str) -> List[dict]:
         return [e for e in self.log if e["kind"] == kind]
 
     def run(self) -> AuditReport:
+        """Malformed evidence fails closed; unfinished elections remain auditable."""
         r = AuditReport()
+        try:
+            return self._run(r)
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError, OverflowError) as exc:
+            r.failed(f"malformed audit record: {type(exc).__name__}: {exc}")
+            return r
+
+    def _run(self, r: AuditReport) -> AuditReport:
+        envelopes = [Envelope.from_dict(e) for e in self.envelopes]
+        # Singleton records and lifecycle order must be checked independently
+        # of hashes: a collector can recompute an unsigned hash chain.
+        kinds = [e["kind"] for e in self.log]
+        for kind in ("config", "registry"):
+            if kinds.count(kind) != 1:
+                r.failed(f"expected exactly one {kind} record")
+        for kind in ("key_ceremony", "open", "close", "decrypt", "tally", "eap"):
+            if kinds.count(kind) > 1:
+                r.failed(f"duplicate {kind} record")
+        phase = "setup"
+        for pos, e in enumerate(self.log):
+            kind = e["kind"]
+            if e["seq"] != pos:
+                r.failed(f"non-contiguous log sequence at position {pos}")
+            if pos < 2:
+                if kind != ("config", "registry")[pos]:
+                    r.failed("config and registry must start the log")
+                continue
+            if kind == "key_ceremony" and phase == "setup":
+                phase = "keyed"
+            elif kind == "open" and phase == "keyed":
+                phase = "open"
+            elif kind == "ballot" and phase == "open":
+                pass
+            elif kind == "close" and phase == "open":
+                phase = "closed"
+            elif kind == "decrypt" and phase == "closed":
+                phase = "decrypted"
+            elif kind == "tally" and phase == "decrypted":
+                phase = "tallied"
+            elif kind == "eap" and phase == "tallied":
+                pass
+            else:
+                r.failed(f"unexpected {kind!r} record during {phase}")
+        if r.failures:
+            return r
         # 1. hash chain
         prev = "0" * 64
         for e in self.log:
@@ -86,6 +131,9 @@ class Auditor:
         except Exception:
             r.failed("election config signature invalid")
         cfg = cfg_e["payload"]["config"]
+        from .election import ElectionConfig
+
+        ElectionConfig(**cfg)  # apply the same configuration validation as the collector
         registry = AgentRegistry.from_dict(self._entries("registry")[0]["payload"])
         if registry.verify() and registry.organiser_key == organiser:
             r.passed(f"roster signed by organiser ({len(registry.ids())} eligible agents)")
@@ -98,7 +146,15 @@ class Auditor:
         if len(by_hash) != len(ballot_entries):
             r.failed("duplicate envelope hashes in log")
         seen: Dict[str, List[Envelope]] = {}
-        for env in self.envelopes:
+        exported_hashes = [env.envelope_hash for env in envelopes]
+        if len(set(exported_hashes)) != len(exported_hashes):
+            r.failed("duplicate exported envelopes")
+        if set(exported_hashes) != set(by_hash):
+            r.failed("exported envelope hashes do not match registered ballots")
+        for env in envelopes:
+            if env.election_id != cfg["election_id"]:
+                r.failed("envelope belongs to a different election")
+                continue
             if env.envelope_hash not in by_hash:
                 r.failed(f"envelope {env.envelope_hash[:12]} not registered in log")
                 continue
@@ -112,18 +168,37 @@ class Auditor:
                 continue
             if by_hash[env.envelope_hash]["payload"]["sealed_sha256"] != sha256(env.sealed):
                 r.failed(f"sealed content of {env.envelope_hash[:12]} differs from registered hash")
+            if by_hash[env.envelope_hash]["payload"]["agent_id"] != env.agent_id:
+                r.failed("registered agent differs from envelope signer")
+            entry = by_hash[env.envelope_hash]
+            receipt = env.receipt
+            if not isinstance(receipt, dict):
+                r.failed(f"missing receipt for {env.envelope_hash[:12]}")
+            else:
+                signed_receipt = {
+                    "envelope_hash": env.envelope_hash,
+                    "log_seq": entry["seq"], "log_hash": entry["hash"],
+                }
+                if (receipt.get("election_id") != cfg["election_id"]
+                        or any(receipt.get(k) != v for k, v in signed_receipt.items())):
+                    r.failed("receipt does not match registered envelope and log position")
+                try:
+                    organiser.verify(canonical(signed_receipt),
+                                     bytes.fromhex(receipt["collector_signature"]))
+                except Exception:
+                    r.failed("collector receipt signature invalid")
             seen.setdefault(env.agent_id, []).append(env)
-        if len(self.envelopes) != len(ballot_entries):
-            r.failed(f"{len(ballot_entries)} ballots in log but {len(self.envelopes)} envelopes exported")
+        if len(envelopes) != len(ballot_entries):
+            r.failed(f"{len(ballot_entries)} ballots in log but {len(envelopes)} envelopes exported")
         if not r.failures:
-            r.passed(f"all {len(self.envelopes)} envelopes registered, eligible, correctly signed")
+            r.passed(f"all {len(envelopes)} envelopes registered, eligible, correctly signed")
 
         # 4. re-vote rule: final = latest by log sequence
         final: Dict[str, Envelope] = {}
         for aid, envs in seen.items():
             envs.sort(key=lambda e: by_hash[e.envelope_hash]["seq"])
             final[aid] = envs[-1]
-        r.passed(f"re-vote rule applied: {len(final)} final envelopes from {len(self.envelopes)} accepted")
+        r.passed(f"re-vote rule applied: {len(final)} final envelopes from {len(envelopes)} accepted")
 
         # 5. re-decrypt everything
         dec = self._entries("decrypt")
@@ -181,15 +256,31 @@ class Auditor:
         quorum_met = eligible > 0 and valid / eligible >= cfg["quorum"]
         if quorum_met != tal["quorum_met"]:
             r.failed("quorum flag misreported")
+        expected_decided = False
+        expected_winner = None
         if valid and quorum_met:
             top, top_n = counts.most_common(1)[0]
-            ties = [c for c, n in counts.items() if n == top_n]
-            if len(ties) == 1:
-                frac = top_n / valid
+            if sum(n == top_n for n in counts.values()) == 1:
                 rule = cfg["rule"]
-                decided = {"plurality": True, "majority": frac > 0.5, "supermajority": frac >= 2 / 3, "unanimous": top_n == valid}[rule]
-                if decided != tal["decided"] or (decided and tal["winner"] != top):
-                    r.failed(f"decision misapplied: rule={rule}, top={top} {top_n}/{valid}, record says {tal['winner']} decided={tal['decided']}")
-                else:
-                    r.passed(f"decision rule {rule} correctly applied -> {tal['winner']!r}")
+                expected_decided = {
+                    "plurality": True,
+                    "majority": top_n * 2 > valid,
+                    "supermajority": top_n * 3 >= valid * 2,
+                    "unanimous": top_n == valid,
+                }[rule]
+                expected_winner = top if expected_decided else None
+        expected = {
+            "eligible": eligible, "valid": valid, "invalid": len(invalid),
+            "rule": cfg["rule"], "decided": expected_decided,
+            "winner": expected_winner,
+            "rationales": {
+                c: {aid: b.rationale for aid, b in recomputed.items() if b.choice == c}
+                for c in cfg["choices"]
+            },
+        }
+        for name, value in expected.items():
+            if name not in tal or tal[name] != value:
+                r.failed(f"tally {name} misreported: expected {value!r}, got {tal.get(name)!r}")
+        if not r.failures:
+            r.passed(f"decision rule {cfg['rule']} correctly applied -> {expected_winner!r}")
         return r

@@ -54,6 +54,23 @@ class ElectionConfig:
     verification_window_s: float = 30 * 60
     created_at: float = field(default_factory=time.time)
 
+    def __post_init__(self) -> None:
+        if not self.election_id or not isinstance(self.election_id, str):
+            raise ValueError("election_id must be a non-empty string")
+        if (not isinstance(self.choices, list) or len(self.choices) < 2
+                or any(not isinstance(c, str) or not c for c in self.choices)
+                or len(set(self.choices)) != len(self.choices)):
+            raise ValueError("choices must contain at least two distinct non-empty strings")
+        if self.rule not in ("plurality", "majority", "supermajority", "unanimous"):
+            raise ValueError(f"unknown rule {self.rule}")
+        if not 0 <= self.quorum <= 1:
+            raise ValueError("quorum must be between 0 and 1")
+        if (type(self.threshold_k) is not int or type(self.threshold_n) is not int
+                or not 1 <= self.threshold_k <= self.threshold_n):
+            raise ValueError("need integer thresholds 1 <= k <= n")
+        if not 0 <= self.verification_window_s < float("inf"):
+            raise ValueError("verification window must be finite and non-negative")
+
     def canonical(self) -> bytes:
         d = dict(self.__dict__)
         return canonical(d)
@@ -117,7 +134,7 @@ class Election:
     def generate_keys(self) -> List[KeyShare]:
         """Key ceremony: create the election key pair, split the private key
         among custodians, forget the whole key (IVXV key application)."""
-        if self.stage is not Stage.SETUP:
+        if self.stage is not Stage.SETUP or self.public_key is not None:
             raise RuntimeError("keys already generated")
         self._sk, self.public_key = generate_election_keypair()
         self.shares = split_private_key(self._sk, self.config.threshold_k, self.config.threshold_n)
@@ -126,6 +143,8 @@ class Election:
         return self.shares
 
     def open(self) -> None:
+        if self.stage is not Stage.SETUP:
+            raise RuntimeError("election can only be opened once")
         if self.public_key is None:
             raise RuntimeError("run generate_keys() first")
         self.stage = Stage.OPEN
@@ -146,6 +165,8 @@ class Election:
         except Exception:
             raise RejectedBallot("bad signature")
         prior = self.envelopes.setdefault(env.agent_id, [])
+        if any(old.envelope_hash == env.envelope_hash for old in prior):
+            raise RejectedBallot("envelope already accepted; cast a new ballot to re-vote")
         entry = self._append(
             "ballot",
             {"agent_id": env.agent_id, "envelope_hash": env.envelope_hash, "sealed_sha256": sha256(env.sealed), "revote_index": len(prior)},

@@ -16,7 +16,7 @@ RES = ROOT / "experiments" / "results"
 
 def load(name):
     p = RES / f"{name}.json"
-    return json.loads(p.read_text()) if p.exists() else None
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
 def main() -> None:
@@ -37,7 +37,7 @@ def main() -> None:
         r["exact_accuracy"] = condorcet(r["n"], r["p"]) if r["condition"] == "sealed" else cascade(r["n"], r["p"], r["lead"])["accuracy"]
     for r in data["consensus"] or []:
         r["exact_reached"] = consensus(r["n"], r["p"], r["stubborn"])["reached"]
-    body = (ROOT / "site" / "app.html").read_text().replace("/*__RESULTS__*/null", json.dumps(data, separators=(",", ":")))
+    body = (ROOT / "site" / "app.html").read_text(encoding="utf-8").replace("/*__RESULTS__*/null", json.dumps(data, separators=(",", ":")))
     head_end = body.index("<div class=\"wrap\">")
     page = (
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
@@ -48,8 +48,8 @@ def main() -> None:
         + "\n</body>\n</html>\n"
     )
     out = ROOT / "docs" / "index.html"
-    out.write_text(page)
-    (ROOT / "docs" / ".nojekyll").write_text("")
+    out.write_text(page, encoding="utf-8")
+    (ROOT / "docs" / ".nojekyll").write_text("", encoding="utf-8")
     print("wrote", out)
 
 

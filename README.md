@@ -307,6 +307,19 @@ from agents not on the roster; edits to the configuration or roster;
 misreported decryptions; a tally that does not match the ballots; a
 misapplied rule; a broken ledger chain. Each case has a test.
 
+The auditor also rejects duplicate exports, inconsistent receipt signatures or
+ledger positions, invalid lifecycle order, and forged approvals on ties, empty
+ballots or unmet quorum. Malformed exports return a failed `AuditReport`.
+An audit of an unfinished election only validates the records available so far;
+it is not evidence of a completed decision.
+
+The organiser key is currently read from the export. A verifier must establish
+that key's identity separately. A self-contained export cannot prove that a
+collector did not omit both a ballot and its corresponding log record; detecting
+that requires independently retained receipts or a trusted ledger checkpoint.
+Hash chaining alone is not an external trust anchor. All key shares are held in
+one process in this prototype; it does not enforce separation between custodians.
+
 **Not addressed:**
 
 - **One organiser key** signs the roster and configuration. A deployment
@@ -345,13 +358,13 @@ src/pol2_agent_ballot/
 experiments/     experiment scripts and analysis, results/ (JSON and ballot logs), figures/ (PNG)
 site/app.html    source of the live demo; built to docs/index.html
 docs/            design, related work, references.bib, related repos, IVXV notes
-tests/           protocol, tampering, consensus, theory, reply parsing, analysis (32 tests)
+tests/           protocol, tampering, consensus, theory, reply parsing, analysis
 ```
 
 ## Development
 
 ```bash
-python -m pytest -q                 # 32 tests
+python -m pytest -q
 python experiments/make_figures.py  # redraw figures from results/
 python scripts/build_site.py        # rebuild docs/index.html
 ```

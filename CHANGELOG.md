@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Reject forged approvals on ties, empty ballots, unmet quorum and failed decision
+  thresholds; verify tally totals, rule, winner and published rationales.
+- Check exported envelope uniqueness, election IDs, signer identity, signed
+  collector receipts, log sequence and lifecycle order; return failed reports
+  for malformed audit evidence.
+- Prevent reopening elections, regenerating issued keys and replaying an
+  already accepted envelope; validate election configurations before setup.
+- Prevent extra agent context from overriding sealed visibility or event stage.
+- Make site generation explicitly UTF-8 on Windows; ensure pytest imports this
+  checkout rather than another installed copy. Add adversarial regression tests.
+- Clarify external trust anchors, incomplete audits and in-process key custody
+  in both READMEs. Historical experiment results are unchanged.
+
 ## 0.4.0 — 2026-10-18
 
 - Experiment 3 run: Claude Haiku 5.5, 40 proposals × 7 agents × 2 conditions
