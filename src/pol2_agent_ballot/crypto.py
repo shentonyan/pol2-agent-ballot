@@ -46,8 +46,8 @@ def _eval_poly(coeffs: Sequence[int], x: int) -> int:
 
 
 def _split_int(secret: int, k: int, n: int) -> List[Tuple[int, int]]:
-    if not (1 <= k <= n):
-        raise ValueError("need 1 <= k <= n")
+    if type(k) is not int or type(n) is not int or not (1 <= k <= n < _P):
+        raise ValueError("need integer thresholds 1 <= k <= n < field modulus")
     if not (0 <= secret < _P):
         raise ValueError("secret out of field")
     coeffs = [secret] + [secrets.randbelow(_P) for _ in range(k - 1)]
@@ -93,6 +93,19 @@ def split_private_key(key: PrivateKey, k: int, n: int) -> List[KeyShare]:
 
 
 def recover_private_key(shares: Sequence[KeyShare], k: int) -> PrivateKey:
+    if type(k) is not int or k < 1:
+        raise ValueError("threshold k must be a positive integer")
+    indices = set()
+    for share in shares:
+        if not isinstance(share, KeyShare):
+            raise ValueError("expected KeyShare records")
+        if type(share.index) is not int or not 1 <= share.index < _P:
+            raise ValueError("share index must be nonzero and inside the field")
+        if share.index in indices:
+            raise ValueError("duplicate share indices do not count as independent custodians")
+        indices.add(share.index)
+        if any(type(v) is not int or not 0 <= v < _P for v in (share.hi, share.lo)):
+            raise ValueError("share values must be integers inside the field")
     if len(shares) < k:
         raise ValueError(f"need at least {k} shares, got {len(shares)}")
     use = list(shares)[:k]

@@ -39,3 +39,17 @@ def test_truncated_reply():
 def test_garbage_is_invalid():
     assert parse_choice("I abstain.", C)[0] == ""
     assert parse_choice('{"choice": "abstain"}', C)[0] == ""
+
+
+
+def test_custom_choice_spelling_is_preserved():
+    choices = ["APPROVE", "Request changes"]
+    assert parse_choice('{"choice":"approve","rationale":"ok"}', choices) == ("APPROVE", "ok")
+    assert parse_choice('{"choice":"request CHANGES"}', choices)[0] == "Request changes"
+    assert parse_choice('{"choice":"APPROVE", "rationale":"cut off', choices)[0] == "APPROVE"
+
+
+def test_case_ambiguous_choice_is_not_guessed():
+    choices = ["Yes", "YES", "No"]
+    assert parse_choice('{"choice":"Yes"}', choices)[0] == "Yes"
+    assert parse_choice('{"choice":"yes"}', choices)[0] == ""

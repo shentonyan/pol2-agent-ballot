@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Validate custodian share indices, field values and integer thresholds; reject
+  duplicate shares before reconstructing a key.
+- Preserve custom choice spelling in model replies and reject ambiguous
+  case-insensitive matches instead of silently changing ballot options.
+
 - Reject forged approvals on ties, empty ballots, unmet quorum and failed decision
   thresholds; verify tally totals, rule, winner and published rationales.
 - Check exported envelope uniqueness, election IDs, signer identity, signed

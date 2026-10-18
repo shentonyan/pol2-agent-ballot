@@ -98,6 +98,15 @@ def parse_choice(raw: str, choices: Sequence[str]) -> Tuple[str, str]:
     as an invalid ballot."""
     if not isinstance(raw, str):
         return "", f"unparseable model output: {raw!r}"
+    def resolve_choice(value):
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        if value in choices:
+            return value
+        matches = [c for c in choices if c.casefold() == value.casefold()]
+        return matches[0] if len(matches) == 1 else None
+
     visible = re.sub(r"<think>.*?</think>", "", raw, flags=re.S)
     for cand in reversed(re.findall(r"\{[^{}]*\}", visible)):
         for text in (cand, cand.replace("\\'", "'")):
@@ -105,13 +114,13 @@ def parse_choice(raw: str, choices: Sequence[str]) -> Tuple[str, str]:
                 d = json.loads(text, strict=False)
             except Exception:
                 continue
-            choice = str(d.get("choice", "")).strip().lower()
-            if choice in choices:
+            choice = resolve_choice(d.get("choice", ""))
+            if choice is not None:
                 return choice, str(d.get("rationale", ""))
     m = re.search(r'"choice"\s*:\s*"(' + "|".join(map(re.escape, choices)) + r')"', visible, re.I)
-    if m:
+    if m and (choice := resolve_choice(m.group(1))) is not None:
         r = re.search(r'"rationale"\s*:\s*"(.*?)"\s*[},]', visible, re.S)
-        return m.group(1).lower(), (r.group(1) if r else "")
+        return choice, (r.group(1) if r else "")
     return "", f"unparseable model output: {raw[:300]!r}"
 
 
